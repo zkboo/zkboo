@@ -4,14 +4,13 @@
 
 use crate::{
     circuit::Circuit,
-    crypto::{GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{Hasher, PseudoRandomGenerator, Seed},
     prover::{
-        challenge::Party,
         proof::{
             Proof, ProofBuilder,
             collectors::{OwnedResponseDataCollector, ResponseDataCollector},
         },
-        views::{WordTriplePool, collectors::ResponseDataSelector},
+        views::WordTriplePool,
     },
 };
 #[cfg(feature = "rayon")]
