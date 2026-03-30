@@ -4,7 +4,7 @@
 
 use crate::{
     circuit::Circuit,
-    crypto::{GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{Hasher, PseudoRandomGenerator, Seed},
     prover::proof::Proof,
     verifier::{
         Verifier,

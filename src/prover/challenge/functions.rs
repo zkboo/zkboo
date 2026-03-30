@@ -4,10 +4,10 @@
 
 use crate::{
     circuit::Circuit,
-    crypto::{GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{Hasher, PseudoRandomGenerator, Seed},
     prover::{
         challenge::builder::ChallengeBuilder,
-        views::{ViewCommitment, WordTriplePool},
+        views::WordTriplePool,
     },
 };
 use alloc::vec::Vec;
