@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "An implementation of the ZKBoo protocol."
 license = "LGPL-3.0-or-later"
+repository = "https://github.com/zkboo/zkboo"
 documentation = "https://docs.rs/zkboo"
 readme = "README.md"
 keywords = ["zk", "zero-knowledge", "zkboo"]
