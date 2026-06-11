@@ -666,6 +666,7 @@ impl<W: Word, const N: usize> CompositeWord<W, N> {
 
     /// Left rotation operation.
     pub fn rotate_left(self, shift: usize) -> Self {
+        let shift = shift % Self::WIDTH;
         let le_words = self.le_words;
         let word_shift = shift / W::WIDTH;
         let bit_shift = shift % W::WIDTH;
@@ -687,6 +688,7 @@ impl<W: Word, const N: usize> CompositeWord<W, N> {
 
     /// Right rotation operation.
     pub fn rotate_right(self, shift: usize) -> Self {
+        let shift = shift % Self::WIDTH;
         let le_words = self.le_words;
         let word_shift = shift / W::WIDTH;
         let bit_shift = shift % W::WIDTH;
