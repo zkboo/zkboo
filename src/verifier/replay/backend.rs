@@ -6,49 +6,60 @@ use crate::{
     backend::{Backend, Frontend},
     crypto::{GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
     prover::{challenge::Party, proof::Response, views::ViewCommitment},
-    verifier::replay::WordPairPool,
+    verifier::replay::{
+        WordPairPool,
+        source::{ReplaySource, ResponseReplaySource},
+    },
     word::{
-        ByWordType, CompositeWord, ShapeError, Word, WordIdx, Words,
+        CompositeWord, ShapeError, Word, WordIdx, Words,
         collectors::{OwnedWordCollector, WordCollector},
     },
 };
-use core::array;
+use core::{array, marker::PhantomData};
 
 /// [Backend] to replay the opened views for two parties in the MPC-in-the-Head protocol.
+///
+/// The bulky per-response data (AND messages and the party-2 input share) is supplied by a
+/// [ReplaySource]. By default this is a [ResponseReplaySource] reading from a materialised
+/// [Response], but any source — e.g. one streaming words from a live prover — can be used.
 #[derive(Debug)]
-pub struct ViewReplayerBackend<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
-{
-    response: &'a Response<H::Digest, S>,
+pub struct ViewReplayerBackend<
+    'a,
+    H: Hasher,
+    PV: PseudoRandomGenerator,
+    S: Seed,
+    WPP: WordPairPool,
+    RS: ReplaySource<<H as Hasher>::Digest> = ResponseReplaySource<'a, <H as Hasher>::Digest, S>,
+> {
+    challenge: Party,
+    source: RS,
     prgs: [PV; 2],
     states: WPP,
     hashers: [H; 2],
     outputs: [OwnedWordCollector; 2],
-    and_msg_idx: ByWordType<usize>,
-    input_share2_idx: ByWordType<usize>,
+    _marker: PhantomData<(&'a Words, fn() -> S)>,
 }
 
-impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
-    ViewReplayerBackend<'a, H, PV, S, WPP>
+impl<
+    'a,
+    H: Hasher,
+    PV: PseudoRandomGenerator,
+    S: Seed,
+    WPP: WordPairPool,
+    RS: ReplaySource<H::Digest>,
+> ViewReplayerBackend<'a, H, PV, S, WPP, RS>
 {
-    /// Creates a new view replayer backend using the given [Seed]s for the three parties
-    /// and the given [WordPairPool] for internal state storage.
-    ///
-    /// Internally:
-    ///
-    /// - [PseudoRandomGenerator]s are instantiated for the three parties using the given seeds.
-    /// - [Hasher]s are instantiated for the three parties with empty internal state.
-    /// - A [OwnedWordCollector] is used to collect output shares for the three parties.
-    pub fn new(response: &'a Response<H::Digest, S>) -> Self {
-        let seeds = response.seeds().clone();
-
+    /// Creates a new view replayer backend from a challenge, the two opened seeds, and a
+    /// [ReplaySource] supplying the streamed AND messages, input shares and unopened digest.
+    pub fn with_source(challenge: Party, opened_seeds: [&S; 2], source: RS) -> Self {
         return Self {
-            response,
-            prgs: array::from_fn(|p| PV::new(seeds[p].as_ref())),
+            challenge,
+            source,
+            prgs: array::from_fn(|p| PV::new(opened_seeds[p].as_ref())),
             hashers: array::from_fn(|_| H::new()),
             states: WPP::default(),
             outputs: array::from_fn(|_| OwnedWordCollector::new()),
-            and_msg_idx: ByWordType::default(),
-            input_share2_idx: ByWordType::default(),
+            _marker: PhantomData,
         };
     }
 
@@ -133,35 +144,18 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
     fn next_rand_words<W: Word, const N: usize>(&mut self) -> [CompositeWord<W, N>; 2] {
         return [self.prgs[0].next(), self.prgs[1].next()];
     }
+}
 
-    /// Extracts the next AND message for the next party from the response.
-    fn next_and_msg<W: Word, const N: usize>(&mut self) -> CompositeWord<W, N> {
-        let and_msg_vec = self.response.and_msg_next_party().as_vec::<W>();
-        let and_msg_idx = self.and_msg_idx.as_value_mut::<W>();
-        if *and_msg_idx + N > and_msg_vec.len() {
-            return CompositeWord::<W, N>::ZERO;
-        }
-        let and_msg =
-            CompositeWord::<W, N>::from_le_words(array::from_fn(|i| and_msg_vec[*and_msg_idx + i]));
-        *and_msg_idx += N;
-        return and_msg;
-    }
-
-    fn next_input_share2<W: Word, const N: usize>(&mut self) -> CompositeWord<W, N> {
-        let input_share2_vec = self
-            .response
-            .input_share_2()
-            .expect("Failed to get input share 2")
-            .as_vec::<W>();
-        let input_share2_idx = self.input_share2_idx.as_value_mut::<W>();
-        if *input_share2_idx + N > input_share2_vec.len() {
-            return CompositeWord::<W, N>::ZERO;
-        }
-        let input_share2 = CompositeWord::<W, N>::from_le_words(array::from_fn(|i| {
-            input_share2_vec[*input_share2_idx + i]
-        }));
-        *input_share2_idx += N;
-        return input_share2;
+impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
+    ViewReplayerBackend<'a, H, PV, S, WPP, ResponseReplaySource<'a, H::Digest, S>>
+{
+    /// Creates a new view replayer backend reading from a materialised [Response].
+    pub fn new(response: &'a Response<H::Digest, S>) -> Self {
+        return Self::with_source(
+            response.challenge(),
+            response.seeds(),
+            ResponseReplaySource::new(response),
+        );
     }
 }
 
@@ -179,55 +173,49 @@ pub enum ViewReplayError {
     InputShare2ShapeMismatch(ShapeError),
 }
 
-impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Backend
-    for ViewReplayerBackend<'a, H, PV, S, WPP>
+impl<
+    'a,
+    H: Hasher,
+    PV: PseudoRandomGenerator,
+    S: Seed,
+    WPP: WordPairPool,
+    RS: ReplaySource<H::Digest>,
+> Backend for ViewReplayerBackend<'a, H, PV, S, WPP, RS>
 {
     type FinalizeArg = &'a Words;
     type FinalizeResult = Result<[ViewCommitment<H::Digest>; 3], ViewReplayError>;
 
-    fn finalize(self, expected_output: Self::FinalizeArg) -> Self::FinalizeResult {
+    fn finalize(mut self, expected_output: Self::FinalizeArg) -> Self::FinalizeResult {
         if expected_output.shape() != self.outputs[0].words().shape() {
             return Err(ViewReplayError::OutputShapeMismatch(ShapeError::new(
                 self.outputs[0].words().shape(),
                 expected_output.shape(),
             )));
         }
-        if self.and_msg_idx != self.response.and_msg_next_party().shape() {
-            return Err(ViewReplayError::AndMsgShapeMismatch(ShapeError::new(
-                self.response.and_msg_next_party().shape(),
-                self.and_msg_idx,
-            )));
-        }
-        if let Some(input_share_2) = self.response.input_share_2() {
-            if self.input_share2_idx != input_share_2.shape() {
-                return Err(ViewReplayError::InputShare2ShapeMismatch(ShapeError::new(
-                    input_share_2.shape(),
-                    self.input_share2_idx,
-                )));
-            }
-        }
+        self.source.check_consumed()?;
+        // The unopened commitment digest arrives last, after all AND messages and input shares.
+        let digest_p2 = self.source.commitment_digest_unopened();
         unsafe {
             // Set to manually drop (because of zeroization):
             let mut self_ = core::mem::ManuallyDrop::new(self);
             // Manually read all fields:
-            let response = core::ptr::read(&mut self_.response);
+            let _source = core::ptr::read(&mut self_.source);
             let _prgs = core::ptr::read(&mut self_.prgs);
             let _states = core::ptr::read(&mut self_.states);
             let hashers = core::ptr::read(&mut self_.hashers);
             let outputs = core::ptr::read(&mut self_.outputs);
-            let _and_msg_idx = core::ptr::read(&mut self_.and_msg_idx);
+            let challenge = self_.challenge;
             // Perform the necessary computations:
             let [output_p0, output_p1] = outputs.map(|collector| collector.finalize());
             let output_p2 = (&(expected_output ^ &output_p0).unwrap() ^ &output_p1).unwrap();
             let [digest_p0, digest_p1] = hashers.map(|mut hasher| hasher.finalize());
-            let digest_p2 = response.commitment_digest_unopened().clone();
             let commitments = [
                 ViewCommitment::new(digest_p0, output_p0),
                 ViewCommitment::new(digest_p1, output_p1),
                 ViewCommitment::new(digest_p2, output_p2),
             ];
             let mut commitments = core::mem::ManuallyDrop::new(commitments);
-            let challenge = response.challenge().index();
+            let challenge = challenge.index();
             let idxs = [
                 (3 - challenge) % 3,
                 (4 - challenge) % 3,
@@ -243,8 +231,7 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Backe
     }
 
     fn input<W: Word, const N: usize>(&mut self, _word: CompositeWord<W, N>) -> WordIdx<W, N> {
-        let challenge = self.response.challenge();
-        return match challenge.index() {
+        return match self.challenge.index() {
             0 => {
                 let input_share_0 = self.prgs[0].next();
                 let input_share_1 = self.prgs[1].next();
@@ -255,14 +242,14 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Backe
             }
             1 => {
                 let input_share1 = self.prgs[0].next();
-                let input_share2 = self.next_input_share2();
+                let input_share2 = self.source.next_input_share2();
 
                 let idx = self.states.alloc();
                 self.states.write(idx, [input_share1, input_share2]);
                 idx
             }
             2 => {
-                let input_share2 = self.next_input_share2();
+                let input_share2 = self.source.next_input_share2();
                 let input_share0 = self.prgs[1].next();
 
                 let idx = self.states.alloc();
@@ -322,7 +309,7 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Backe
     }
 
     fn not<W: Word, const N: usize>(&mut self, in_: WordIdx<W, N>, out: WordIdx<W, N>) {
-        let challenge = self.response.challenge();
+        let challenge = self.challenge;
         self.unop(in_, out, |w, p| {
             if (p.index() + challenge.index()) % 3 == 0 {
                 !w
@@ -338,7 +325,7 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Backe
         inr: CompositeWord<W, N>,
         out: WordIdx<W, N>,
     ) {
-        let challenge = self.response.challenge();
+        let challenge = self.challenge;
         self.binop_const(inl, inr, out, |wl, wr, p| {
             if (p.index() + challenge.index()) % 3 == 0 {
                 wl ^ wr
@@ -430,7 +417,7 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Backe
         let inrs = self.states.read(inr);
 
         let and_msg_0 = (inls[0] & inrs[1]) ^ (inls[1] & inrs[0]) ^ rand_words[0] ^ rand_words[1];
-        let and_msg_1 = self.next_and_msg();
+        let and_msg_1 = self.source.next_and_msg();
 
         let outs = [
             (inls[0] & inrs[0]) ^ and_msg_0,
@@ -452,7 +439,7 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Backe
         let ps = self.states.read(p);
         let gs = self.states.read(g);
 
-        let mut and_msgs = [CompositeWord::<W, N>::ZERO, self.next_and_msg()];
+        let mut and_msgs = [CompositeWord::<W, N>::ZERO, self.source.next_and_msg()];
         let mut carries = [CompositeWord::<W, N>::ZERO; 2];
         let mut mask = CompositeWord::<W, N>::ONE;
         let mut cs = [CompositeWord::<W, N>::from_bool(carry_in); 2];
