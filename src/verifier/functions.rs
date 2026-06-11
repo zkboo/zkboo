@@ -47,7 +47,7 @@ where
     S: Send + Sync,
 {
     use crate::{
-        crypto::HashPRG,
+        crypto::{GeneratesRandom, HashPRG},
         prover::challenge::{ChallengeGenerator, PartyVec},
     };
     use alloc::vec::Vec;
