@@ -25,10 +25,11 @@ pub fn build_challenge_entropy<
 >(
     circuit: &C,
     seed_entropy: &[u8],
+    binding: &[u8],
     num_iters: usize,
 ) -> Zeroizing<Vec<u8>> {
     // 1. Initialise the challenge builder:
-    let mut builder = ChallengeBuilder::<H, PS, PV, S, WTP>::new(seed_entropy);
+    let mut builder = ChallengeBuilder::<H, PS, PV, S, WTP>::new(seed_entropy, binding);
     // 2. Ingest iterations into the builder sequentially:
     for _ in 0..num_iters {
         let iter = builder.next_iter();
@@ -51,6 +52,7 @@ pub fn par_build_challenge_entropy<
 >(
     circuit: &C,
     seed_entropy: &[u8],
+    binding: &[u8],
     num_iters: usize,
 ) -> Zeroizing<Vec<u8>>
 where
@@ -74,6 +76,7 @@ where
         .collect::<Vec<[ViewCommitment<H::Digest>; 3]>>();
     // 3. Ingest view commitments into the challenge hasher sequentially:
     let mut challenge_hasher = H::new();
+    challenge_hasher.update(binding);
     for view_commitments in view_commitments_vec {
         for commitment in view_commitments {
             challenge_hasher.update(commitment.digest().as_ref());

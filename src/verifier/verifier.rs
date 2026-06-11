@@ -28,11 +28,13 @@ pub struct Verifier<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: Word
 impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
     Verifier<'a, H, PV, S, WPP>
 {
-    /// Creates a new [Verifier] for the given expected output.
-    pub fn new(expected_output: &'a Words) -> Self {
+    /// Creates a new [Verifier] for the given expected output and binding message.
+    pub fn new(expected_output: &'a Words, binding: &[u8]) -> Self {
+        let mut challenge_hasher = H::new();
+        challenge_hasher.update(binding);
         return Self {
             expected_output,
-            challenge_hasher: H::new(),
+            challenge_hasher,
             challenges: PartyVec::new(),
             num_iters_ingested: 0,
             _marker: core::marker::PhantomData,
