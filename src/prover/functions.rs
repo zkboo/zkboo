@@ -30,10 +30,11 @@ pub fn prove_custom<
     circuit: &C,
     num_iters: usize,
     seed_entropy: &[u8],
+    binding: &[u8],
     collector_init_arg: RDC::InitArg,
 ) -> Vec<RDC::FinalizeRes> {
     let challenge_entropy =
-        build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, num_iters);
+        build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, binding, num_iters);
     return build_proof_custom::<C, H, PS, PV, S, RDC, WTP>(
         circuit,
         seed_entropy,
@@ -55,9 +56,10 @@ pub fn prove<
     circuit: &C,
     num_iters: usize,
     seed_entropy: &[u8],
+    binding: &[u8],
 ) -> Proof<H::Digest, S> {
     let challenge_entropy =
-        build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, num_iters);
+        build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, binding, num_iters);
     return build_proof::<C, H, PS, PV, S, WTP>(
         circuit,
         seed_entropy,
@@ -79,6 +81,7 @@ pub fn par_prove<
     circuit: &C,
     num_iters: usize,
     seed_entropy: &[u8],
+    binding: &[u8],
 ) -> Proof<H::Digest, S>
 where
     C: Sync,
@@ -86,7 +89,7 @@ where
     S: Sync + Send,
 {
     let challenge_entropy =
-        par_build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, num_iters);
+        par_build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, binding, num_iters);
     return par_build_proof::<C, H, PS, PV, S, WTP>(
         circuit,
         seed_entropy,

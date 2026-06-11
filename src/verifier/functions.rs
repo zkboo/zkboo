@@ -21,8 +21,9 @@ pub fn verify<C: Circuit, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: Wo
     circuit: &C,
     expected_output: &Words,
     proof: &Proof<H::Digest, S>,
+    binding: &[u8],
 ) -> Result<bool, ViewReplayError> {
-    let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output);
+    let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
     for response in proof {
         let iter = verifier.next_iter(response);
         circuit.exec(iter.view_replayer());
@@ -40,6 +41,7 @@ pub fn par_verify<C: Circuit, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP
     circuit: &C,
     expected_output: &Words,
     proof: &Proof<H::Digest, S>,
+    binding: &[u8],
 ) -> Result<bool, ViewReplayError>
 where
     C: Sync,
@@ -71,6 +73,7 @@ where
         .collect();
     // 3. Ingest all replayed view commitments, in sequence:
     let mut challenge_hasher = H::new();
+    challenge_hasher.update(binding);
     for res in replay_results {
         let view_commitments = res?;
         for commitment in view_commitments {

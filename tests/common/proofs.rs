@@ -45,6 +45,7 @@ type PV = HashPRG<H>;
 type S = <H as Hasher>::Digest;
 
 const SEED_ENTROPY: &[u8] = b"seed entropy";
+const BINDING: &[u8] = b"binding message";
 const NUM_PROOF_ITERS: usize = 64;
 
 /// Global flag to enable proof testing.
@@ -56,23 +57,23 @@ pub fn test_proof<C: Circuit + Sync>(circuit: &C) {
         let mut proof;
         let mut is_valid;
         // [seq prove, seq verify]
-        proof = prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY);
-        is_valid = verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof)
+        proof = prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY, BINDING);
+        is_valid = verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof, BINDING)
             .expect("Error verifying proof [seq prove, seq verify]");
         assert!(is_valid, "Proof is invalid [seq prove, seq verify].");
         // [seq prove, par verify]
-        proof = prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY);
-        is_valid = par_verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof)
+        proof = prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY, BINDING);
+        is_valid = par_verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof, BINDING)
             .expect("Error verifying proof [seq prove, seq verify]");
         assert!(is_valid, "Proof is invalid [seq prove, seq verify].");
         // [par prove, seq verify]
-        proof = par_prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY);
-        is_valid = verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof)
+        proof = par_prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY, BINDING);
+        is_valid = verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof, BINDING)
             .expect("Error verifying proof [seq prove, seq verify]");
         assert!(is_valid, "Proof is invalid [seq prove, seq verify].");
         // [par prove, par verify]
-        proof = par_prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY);
-        is_valid = par_verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof)
+        proof = par_prove::<C, H, PS, PV, S, WTP>(circuit, NUM_PROOF_ITERS, SEED_ENTROPY, BINDING);
+        is_valid = par_verify::<C, H, PV, S, WPP>(circuit, &expected_output, &proof, BINDING)
             .expect("Error verifying proof [seq prove, seq verify]");
         assert!(is_valid, "Proof is invalid [seq prove, seq verify].");
     }

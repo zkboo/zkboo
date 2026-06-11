@@ -30,11 +30,13 @@ pub struct ChallengeBuilder<
 impl<H: Hasher, PS: PseudoRandomGenerator, PV: PseudoRandomGenerator, S: Seed, WTP: WordTriplePool>
     ChallengeBuilder<H, PS, PV, S, WTP>
 {
-    /// Creates a new challenge builder with the given seed entropy.
-    pub fn new(seed_entropy: &[u8]) -> Self {
+    /// Creates a new challenge builder with the given seed entropy and binding message.
+    pub fn new(seed_entropy: &[u8], binding: &[u8]) -> Self {
+        let mut challenge_hasher = H::new();
+        challenge_hasher.update(binding);
         return ChallengeBuilder {
             seed_prg: PS::new(seed_entropy),
-            challenge_hasher: H::new(),
+            challenge_hasher,
             num_iters_ingested: 0,
             _marker: core::marker::PhantomData,
         };
