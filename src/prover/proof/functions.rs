@@ -15,8 +15,11 @@ use crate::{
 };
 #[cfg(feature = "rayon")]
 use crate::{
-    crypto::HashPRG,
-    prover::{challenge::ChallengeGenerator, views::ViewBuilderBackend},
+    crypto::{GeneratesRandom, HashPRG},
+    prover::{
+        challenge::{ChallengeGenerator, Party},
+        views::{ViewBuilderBackend, collectors::ResponseDataSelector},
+    },
 };
 use alloc::vec::Vec;
 use zeroize::Zeroizing;

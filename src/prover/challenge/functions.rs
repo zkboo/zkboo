@@ -58,6 +58,7 @@ where
     H::Digest: Send,
     S: Send,
 {
+    use crate::{crypto::GeneratesRandom, prover::views::ViewCommitment};
     use rayon::prelude::*;
     // 1. Generate seeds for all iterations sequentially:
     let mut seed_prg = PS::new(seed_entropy);
