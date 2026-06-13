@@ -4,7 +4,7 @@
 
 use crate::{
     backend::Frontend,
-    crypto::{GeneratesRandom, HashPRG, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{TAG_CHALLENGE, absorb_framed, GeneratesRandom, HashPRG, Hasher, PseudoRandomGenerator, Seed},
     prover::{
         challenge::{ChallengeGenerator, PartyVec},
         proof::Response,
@@ -31,7 +31,7 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
     /// Creates a new [Verifier] for the given expected output and binding message.
     pub fn new(expected_output: &'a Words, binding: &[u8]) -> Self {
         let mut challenge_hasher = H::new();
-        challenge_hasher.update(binding);
+        absorb_framed(&mut challenge_hasher, TAG_CHALLENGE, binding);
         return Self {
             expected_output,
             challenge_hasher,

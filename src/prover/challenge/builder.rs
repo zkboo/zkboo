@@ -4,7 +4,7 @@
 
 use crate::{
     backend::Frontend,
-    crypto::{GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{TAG_CHALLENGE, absorb_framed, GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
     prover::views::{
         ViewBuilderBackend, ViewCommitment, WordTriplePool, collectors::ViewCommitmentsRelayer,
     },
@@ -33,7 +33,7 @@ impl<H: Hasher, PS: PseudoRandomGenerator, PV: PseudoRandomGenerator, S: Seed, W
     /// Creates a new challenge builder with the given seed entropy and binding message.
     pub fn new(seed_entropy: &[u8], binding: &[u8]) -> Self {
         let mut challenge_hasher = H::new();
-        challenge_hasher.update(binding);
+        absorb_framed(&mut challenge_hasher, TAG_CHALLENGE, binding);
         return ChallengeBuilder {
             seed_prg: PS::new(seed_entropy),
             challenge_hasher,

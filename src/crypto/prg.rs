@@ -2,6 +2,7 @@
 
 //! Trait for (pseudo-)random generators (PRGs) and implementation of a hash-based PRG.
 
+use crate::crypto::domain::{TAG_PRG, absorb_framed};
 use crate::word::Word;
 use crate::{crypto::Hasher, word::CompositeWord};
 use alloc::vec;
@@ -110,7 +111,7 @@ impl<H: Hasher> PseudoRandomGenerator for HashPRG<H> {
             "Hasher digest size must be greater than zero"
         );
         let mut hasher = H::new();
-        hasher.update(seed);
+        absorb_framed(&mut hasher, TAG_PRG, seed);
         let key = hasher.finalize();
         return Self {
             hasher,
@@ -136,6 +137,7 @@ impl<H: Hasher> HashPRG<H> {
 
     /// Refill the internal buffer with new random bytes.
     pub fn refill_buffer(&mut self) {
+        self.hasher.update(TAG_PRG);
         self.hasher.update(self.key.as_ref());
         self.hasher.update(&self.counter.to_le_bytes());
         self.buf = Zeroizing::new(self.hasher.finalize());
