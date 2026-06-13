@@ -4,7 +4,7 @@
 
 use crate::{
     circuit::Circuit,
-    crypto::{Hasher, PseudoRandomGenerator, Seed},
+    crypto::{TAG_CHALLENGE, absorb_framed, Hasher, PseudoRandomGenerator, Seed},
     prover::proof::Proof,
     verifier::{
         Verifier,
@@ -73,7 +73,7 @@ where
         .collect();
     // 3. Ingest all replayed view commitments, in sequence:
     let mut challenge_hasher = H::new();
-    challenge_hasher.update(binding);
+    absorb_framed(&mut challenge_hasher, TAG_CHALLENGE, binding);
     for res in replay_results {
         let view_commitments = res?;
         for commitment in view_commitments {

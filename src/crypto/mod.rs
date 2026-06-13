@@ -2,8 +2,10 @@
 
 //! Traits and implementations for cryptographic hashers and pseudo-random generators.
 
+mod domain;
 mod hasher;
 mod prg;
 
+pub use domain::{TAG_CHALLENGE, TAG_PRG, TAG_VIEW_COMMITMENT, absorb_framed};
 pub use hasher::{Digest, Hasher};
 pub use prg::{GeneratesRandom, HashPRG, PseudoRandomGenerator, RandomGenerator, Seed};

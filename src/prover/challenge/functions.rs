@@ -4,7 +4,7 @@
 
 use crate::{
     circuit::Circuit,
-    crypto::{Hasher, PseudoRandomGenerator, Seed},
+    crypto::{TAG_CHALLENGE, absorb_framed, Hasher, PseudoRandomGenerator, Seed},
     prover::{
         challenge::builder::ChallengeBuilder,
         views::WordTriplePool,
@@ -76,7 +76,7 @@ where
         .collect::<Vec<[ViewCommitment<H::Digest>; 3]>>();
     // 3. Ingest view commitments into the challenge hasher sequentially:
     let mut challenge_hasher = H::new();
-    challenge_hasher.update(binding);
+    absorb_framed(&mut challenge_hasher, TAG_CHALLENGE, binding);
     for view_commitments in view_commitments_vec {
         for commitment in view_commitments {
             challenge_hasher.update(commitment.digest().as_ref());
