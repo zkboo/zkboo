@@ -4,8 +4,12 @@
 
 mod domain;
 mod hasher;
+#[cfg(feature = "keccak")]
+mod keccak;
 mod prg;
 
 pub use domain::{TAG_CHALLENGE, TAG_PRG, TAG_VIEW_COMMITMENT, absorb_framed};
 pub use hasher::{Digest, Hasher};
+#[cfg(feature = "keccak")]
+pub use keccak::Keccak256Hasher;
 pub use prg::{GeneratesRandom, HashPRG, PseudoRandomGenerator, RandomGenerator, Seed};
