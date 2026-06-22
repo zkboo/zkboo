@@ -6,7 +6,8 @@ use crate::{
     backend::Frontend,
     crypto::{TAG_CHALLENGE, absorb_framed, GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
     prover::views::{
-        ViewBuilderBackend, ViewCommitment, WordTriplePool, collectors::ViewCommitmentsRelayer,
+        ViewBuilderBackend, ViewCommitment, WordTriplePool,
+        collectors::{ViewCommitmentsRelayer, ViewsDataCollector},
     },
 };
 use alloc::vec::Vec;
@@ -47,12 +48,28 @@ impl<H: Hasher, PS: PseudoRandomGenerator, PV: PseudoRandomGenerator, S: Seed, W
         return self.num_iters_ingested;
     }
 
-    /// Starts a new challenge building iteration.
-    pub fn next_iter(&'_ mut self) -> ChallengeBuildingIteration<'_, H, PS, PV, S, WTP> {
+    /// Starts a new challenge building iteration using the default [ViewCommitmentsRelayer]
+    /// collector, which simply relays the view commitments for ingestion into the challenge hasher.
+    pub fn next_iter(
+        &'_ mut self,
+    ) -> ChallengeBuildingIteration<'_, H, PS, PV, S, ViewCommitmentsRelayer<H::Digest, S>, WTP>
+    {
+        return self.next_iter_custom(());
+    }
+
+    /// Starts a new challenge building iteration with a caller-chosen [ViewsDataCollector].
+    pub fn next_iter_custom<VDC>(
+        &'_ mut self,
+        collector_init_arg: VDC::InitArg,
+    ) -> ChallengeBuildingIteration<'_, H, PS, PV, S, VDC, WTP>
+    where
+        VDC: ViewsDataCollector<H::Digest, S, FinalizeRes = [ViewCommitment<H::Digest>; 3]>,
+    {
         let seeds: Zeroizing<[S; 3]> = Zeroizing::new(self.seed_prg.next());
         return ChallengeBuildingIteration {
             challenge_builder: self,
-            view_builder: ViewBuilderBackend::new(seeds).into_view_builder(),
+            view_builder: ViewBuilderBackend::new_with_arg(seeds, collector_init_arg)
+                .into_view_builder(),
         };
     }
 
@@ -82,10 +99,11 @@ pub struct ChallengeBuildingIteration<
     PS: PseudoRandomGenerator,
     PV: PseudoRandomGenerator,
     S: Seed,
+    VDC: ViewsDataCollector<H::Digest, S>,
     WTP: WordTriplePool,
 > {
     challenge_builder: &'a mut ChallengeBuilder<H, PS, PV, S, WTP>,
-    view_builder: Frontend<ViewBuilderBackend<H, PV, S, ViewCommitmentsRelayer<H::Digest, S>, WTP>>,
+    view_builder: Frontend<ViewBuilderBackend<H, PV, S, VDC, WTP>>,
 }
 
 impl<
@@ -94,13 +112,12 @@ impl<
     PS: PseudoRandomGenerator,
     PV: PseudoRandomGenerator,
     S: Seed,
+    VDC: ViewsDataCollector<H::Digest, S, FinalizeRes = [ViewCommitment<H::Digest>; 3]>,
     WTP: WordTriplePool,
-> ChallengeBuildingIteration<'a, H, PS, PV, S, WTP>
+> ChallengeBuildingIteration<'a, H, PS, PV, S, VDC, WTP>
 {
     /// The view builder [Frontend] for this challenge building iteration.
-    pub fn view_builder(
-        &self,
-    ) -> &Frontend<ViewBuilderBackend<H, PV, S, ViewCommitmentsRelayer<H::Digest, S>, WTP>> {
+    pub fn view_builder(&self) -> &Frontend<ViewBuilderBackend<H, PV, S, VDC, WTP>> {
         return &self.view_builder;
     }
 
@@ -121,8 +138,9 @@ impl<
     PS: PseudoRandomGenerator,
     PV: PseudoRandomGenerator,
     S: Seed,
+    VDC: ViewsDataCollector<H::Digest, S>,
     WTP: WordTriplePool,
-> Drop for ChallengeBuildingIteration<'a, H, PS, PV, S, WTP>
+> Drop for ChallengeBuildingIteration<'a, H, PS, PV, S, VDC, WTP>
 {
     /// Panics if the iteration is dropped before being finalized.
     fn drop(&mut self) {
