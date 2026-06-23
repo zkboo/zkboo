@@ -867,7 +867,9 @@ impl<W: Word, const N: usize> CompositeWord<W, N> {
     /// Wrapping multiplication.
     pub fn wrapping_mul(mut self, mut rhs: Self) -> Self {
         let mut acc = Self::ZERO;
-        for _ in 0..W::WIDTH {
+        // Iterate over the full composite width `W::WIDTH * N`, not just a single word, so the
+        // result is correct modulo `2^(W::WIDTH * N)` for multi-word composites.
+        for _ in 0..Self::WIDTH {
             let rhs_bit = rhs.clone().lsb();
             if rhs_bit {
                 acc = acc.wrapping_add(self);

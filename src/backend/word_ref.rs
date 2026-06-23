@@ -489,7 +489,9 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
     /// Wrapping multiplication.
     pub fn wrapping_mul(mut self, mut rhs: Self) -> Self {
         let mut acc = WordRef::alloc_zero(&self.backend);
-        for _ in 0..W::WIDTH {
+        // Iterate over the full composite width `W::WIDTH * N`, not just a single word, so the
+        // result is correct modulo `2^(W::WIDTH * N)` for multi-word composites.
+        for _ in 0..Self::WIDTH {
             let rhs_bit = rhs.clone().lsb();
             acc = acc.wrapping_add(rhs_bit.select_var_const(self.clone(), Self::ZERO));
             self = self << 1;
@@ -499,15 +501,22 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
     }
 
     /// Wrapping multiplication with a constant.
-    pub fn wrapping_mul_const<RHS: WordLike<W, N>>(mut self, rhs: RHS) -> Self {
-        let mut rhs = rhs.to_word();
+    ///
+    /// The constant is recoded into non-adjacent form (NAF) at circuit-build time (see
+    /// [naf_digits]), so the in-circuit cost scales with the NAF weight of `rhs` (≈ WIDTH/3 on
+    /// average, far fewer for constants close to a power of two) rather than its bit length.
+    /// Each nonzero NAF digit contributes one wrapping add (`+1`) or subtract (`-1`).
+    pub fn wrapping_mul_const<RHS: WordLike<W, N>>(self, rhs: RHS) -> Self {
+        let naf = naf_digits(rhs.to_word());
         let mut acc = WordRef::alloc_zero(&self.backend);
-        for _ in 0..W::WIDTH {
-            if rhs.lsb() {
-                acc = acc.wrapping_add(self.clone());
+        let mut add = self;
+        for &digit in naf.iter() {
+            if digit == 1 {
+                acc = acc.wrapping_add(add.clone());
+            } else if digit == -1 {
+                acc = acc.wrapping_sub(add.clone());
             }
-            self = self << 1;
-            rhs = rhs >> 1;
+            add = add << 1;
         }
         return acc;
     }
@@ -534,23 +543,38 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
         return (acc_lo, acc_hi);
     }
 
-    /// Carrying multiplication with constant rhs.
+    /// Carrying (double-width) multiplication with a constant rhs.
+    ///
+    /// The constant is recoded into non-adjacent form (NAF) at circuit-build time (see
+    /// [naf_digits]), so the in-circuit cost scales with the NAF weight of `rhs` (≈ WIDTH/3 on
+    /// average, far fewer for constants close to a power of two, e.g. pseudo-Mersenne moduli)
+    /// rather than its Hamming weight. Each nonzero NAF digit contributes one wide add (`+1`) or
+    /// subtract (`-1`) of the shifted multiplicand into the running accumulator. The accumulator
+    /// is kept in two's-complement form across the (transient) subtractions; the final product is
+    /// non-negative and fits the double width, so the low/high words are exact.
     pub fn wide_mul_const<RHS: WordLike<W, N>>(self, rhs: RHS) -> (Self, Self) {
-        let mut rhs = rhs.to_word();
+        let naf = naf_digits(rhs.to_word());
         let mut acc_hi = WordRef::alloc_zero(&self.backend);
         let mut acc_lo = WordRef::alloc_zero(&self.backend);
         let mut add_hi = WordRef::alloc_zero(&self.backend);
         let mut add_lo = self;
         let mut add_hi_lo: Self;
-        let mut carry: BooleanWordRef<B>;
-        for _ in 0..Self::WIDTH {
-            if rhs.lsb() {
+        for &digit in naf.iter() {
+            if digit == 1 {
+                let carry: BooleanWordRef<B>;
                 (acc_lo, carry) = acc_lo.overflowing_add(add_lo.clone());
-                acc_hi = acc_hi.wrapping_add(add_hi.clone().wrapping_add(Self::from_bool(carry)));
+                acc_hi = acc_hi
+                    .wrapping_add(add_hi.clone())
+                    .wrapping_add(Self::from_bool(carry));
+            } else if digit == -1 {
+                let borrow: BooleanWordRef<B>;
+                (acc_lo, borrow) = acc_lo.overflowing_sub(add_lo.clone());
+                acc_hi = acc_hi
+                    .wrapping_sub(add_hi.clone())
+                    .wrapping_sub(Self::from_bool(borrow));
             }
             (add_lo, add_hi_lo) = add_lo.overflowing_shl(1);
             add_hi = (add_hi << 1).bitxor(add_hi_lo);
-            rhs = rhs >> 1;
         }
         return (acc_lo, acc_hi);
     }
@@ -627,6 +651,39 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
     pub fn eq_const<RHS: WordLike<W, N>>(self, rhs: RHS) -> BooleanWordRef<B> {
         return !self.ne_const(rhs);
     }
+}
+
+/// Computes the non-adjacent form (NAF) of a public constant `value`, returned as little-endian
+/// signed digits in `{-1, 0, +1}` with no two adjacent digits both nonzero.
+fn naf_digits<W: Word, const N: usize>(value: CompositeWord<W, N>) -> Vec<i8> {
+    let width = W::WIDTH * N;
+    // Little-endian binary digits, with two slots of headroom: a NAF carry can reach one position
+    // above the top bit, and we read one digit ahead.
+    let mut bits: Vec<i32> = (0..width).map(|i| value.bit_at(i) as i32).collect();
+    bits.push(0);
+    bits.push(0);
+    let mut naf: Vec<i8> = Vec::new();
+    naf.resize(bits.len(), 0i8);
+    for i in 0..=width {
+        if bits[i] & 1 != 0 {
+            // z = 2 - (value mod 4) read at this position: +1 when the next bit is 0, -1 when 1.
+            let z = 2 - ((bits[i] + 2 * bits[i + 1]) & 3);
+            naf[i] = z as i8;
+            bits[i] -= z;
+            // Re-normalise the (now even) digit back to {0, 1}, propagating the carry upward.
+            let mut j = i;
+            while bits[j] > 1 {
+                bits[j] -= 2;
+                bits[j + 1] += 1;
+                j += 1;
+            }
+        }
+    }
+    // Trim trailing zero digits, keeping at least one so the multiplication loop is well-defined.
+    while naf.len() > 1 && *naf.last().unwrap() == 0 {
+        naf.pop();
+    }
+    return naf;
 }
 
 impl<B: Backend, W: Word> WordRef<B, W, 1> {
