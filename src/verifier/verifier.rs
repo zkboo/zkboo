@@ -3,7 +3,7 @@
 //! Implementation of the ZKBoo verifier.
 
 use crate::{
-    backend::Frontend,
+    backend::{Backend, BackendHook, Frontend, Hooked, NoHook},
     crypto::{TAG_CHALLENGE, absorb_framed, GeneratesRandom, HashPRG, Hasher, PseudoRandomGenerator, Seed},
     prover::{
         challenge::{ChallengeGenerator, PartyVec},
@@ -51,9 +51,23 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
         &'c mut self,
         response: &'b Response<H::Digest, S>,
     ) -> VerifyingIteration<'a, 'b, 'c, H, PV, S, WPP> {
+        return self.next_iter_hooked::<NoHook>(response, ());
+    }
+
+    /// Yields the next verification iteration with a per-operation [BackendHook] wrapping the view
+    /// replayer backend, built fresh for this iteration via [BackendHook::new] from
+    /// `hook_init_arg`.
+    pub fn next_iter_hooked<'b, 'c, BH: BackendHook>(
+        &'c mut self,
+        response: &'b Response<H::Digest, S>,
+        hook_init_arg: BH::InitArg,
+    ) -> VerifyingIteration<'a, 'b, 'c, H, PV, S, WPP, BH> {
         self.challenges.push(response.challenge());
-        let view_replayer =
-            ViewReplayerBackend::<H, PV, S, WPP>::new(response).into_view_replayer();
+        let view_replayer = Hooked::new(
+            BH::new(hook_init_arg),
+            ViewReplayerBackend::<H, PV, S, WPP>::new(response),
+        )
+        .into_frontend();
         return VerifyingIteration {
             verifier: self,
             view_replayer,
@@ -95,16 +109,20 @@ pub struct VerifyingIteration<
     PV: PseudoRandomGenerator,
     S: Seed,
     WPP: WordPairPool,
+    BH: BackendHook = NoHook,
 > {
     verifier: &'c mut Verifier<'a, H, PV, S, WPP>,
-    view_replayer: Frontend<ViewReplayerBackend<'b, H, PV, S, WPP>>,
+    view_replayer: Frontend<Hooked<BH, ViewReplayerBackend<'b, H, PV, S, WPP>>>,
 }
 
-impl<'a, 'b, 'c, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
-    VerifyingIteration<'a, 'b, 'c, H, PV, S, WPP>
+impl<'a, 'b, 'c, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool, BH: BackendHook>
+    VerifyingIteration<'a, 'b, 'c, H, PV, S, WPP, BH>
 {
     /// Returns a [Frontend] which can be used to replay the view corresponding to this iteration.
-    pub fn view_replayer(&self) -> &Frontend<ViewReplayerBackend<'b, H, PV, S, WPP>> {
+    ///
+    /// To reach the replayer's recording accessors through the hook wrapper, use
+    /// `with_backend(|h| h.inner()...)` (see [Hooked::inner]).
+    pub fn view_replayer(&self) -> &Frontend<Hooked<BH, ViewReplayerBackend<'b, H, PV, S, WPP>>> {
         return &self.view_replayer;
     }
 
@@ -120,8 +138,8 @@ impl<'a, 'b, 'c, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPoo
     }
 }
 
-impl<'a, 'b, 'c, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool> Drop
-    for VerifyingIteration<'a, 'b, 'c, H, PV, S, WPP>
+impl<'a, 'b, 'c, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool, BH: BackendHook>
+    Drop for VerifyingIteration<'a, 'b, 'c, H, PV, S, WPP, BH>
 {
     /// Panics if this iteration is dropped before being finalized.
     fn drop(&mut self) {

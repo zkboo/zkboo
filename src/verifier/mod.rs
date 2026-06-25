@@ -8,5 +8,5 @@ mod verifier;
 
 #[cfg(feature = "parallel")]
 pub use functions::par_verify;
-pub use functions::verify;
+pub use functions::{verify, verify_hooked};
 pub use verifier::Verifier;

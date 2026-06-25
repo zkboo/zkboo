@@ -3,6 +3,7 @@
 //! Functions for verifying ZKBoo proofs.
 
 use crate::{
+    backend::BackendHook,
     circuit::Circuit,
     crypto::{TAG_CHALLENGE, absorb_framed, Hasher, PseudoRandomGenerator, Seed},
     prover::proof::Proof,
@@ -26,6 +27,35 @@ pub fn verify<C: Circuit, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: Wo
     let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
     for response in proof {
         let iter = verifier.next_iter(response);
+        circuit.exec(iter.view_replayer());
+        iter.finalize()?;
+    }
+    return Ok(verifier.finalize());
+}
+
+/// Variant of [verify] that wraps each iteration's view replayer backend with a per-operation
+/// [BackendHook], built fresh per iteration from `hook_init_arg`.
+///
+/// The hook fires around every backend operation — the linear ops (XOR, shifts, rotates) included —
+/// so an on-device verifier can service a platform watchdog at per-operation granularity, or a
+/// benchmark can count operations. With `BH = NoHook` this is byte-identical to [verify].
+pub fn verify_hooked<
+    C: Circuit,
+    H: Hasher,
+    PV: PseudoRandomGenerator,
+    S: Seed,
+    WPP: WordPairPool,
+    BH: BackendHook,
+>(
+    circuit: &C,
+    expected_output: &Words,
+    proof: &Proof<H::Digest, S>,
+    binding: &[u8],
+    hook_init_arg: BH::InitArg,
+) -> Result<bool, ViewReplayError> {
+    let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
+    for response in proof {
+        let iter = verifier.next_iter_hooked::<BH>(response, hook_init_arg);
         circuit.exec(iter.view_replayer());
         iter.finalize()?;
     }
