@@ -9,7 +9,7 @@ mod word_pool;
 
 pub use backend::ExecutionBackend;
 // pub use frontend::Executor;
-pub use functions::exec;
+pub use functions::{exec, exec_hooked};
 pub use word_pool::{
     GlobalFlexibleWordPool, GlobalWordSource, OwnedFlexibleWordPool, WordPool, WordPoolWrapper,
     WordSource, WordSourceWrapper,
