@@ -19,7 +19,7 @@ use zkboo::{
     backend::{Backend, BackendHook, Frontend, NoHook},
     circuit::Circuit,
     crypto::{HashPRG, Hasher},
-    executor::{OwnedFlexibleWordPool, exec},
+    executor::{OwnedFlexibleWordPool, exec, exec_hooked},
     prover::{
         challenge::build_challenge_entropy,
         proof::{build_proof, build_proof_hooked},
@@ -262,5 +262,40 @@ fn observing_hook_on_verify_fires_yet_verifies() {
         counter.get() >= NUM_ITERS * 3,
         "the verify hook's post_* seam did not fire as expected (counter = {})",
         counter.get()
+    );
+}
+
+#[test]
+fn nohook_exec_is_byte_identical() {
+    let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
+
+    let out_plain = exec::<MixedCircuit, WP>(&circuit);
+    let out_nohook = exec_hooked::<MixedCircuit, WP, NoHook>(&circuit, ());
+
+    assert_eq!(
+        out_plain, out_nohook,
+        "NoHook-wrapped exec diverged from plain exec"
+    );
+}
+
+#[test]
+fn observing_hook_on_exec_fires_yet_is_output_neutral() {
+    let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
+
+    let out_plain = exec::<MixedCircuit, WP>(&circuit);
+
+    let counter = Cell::new(0usize);
+    let out_hooked = exec_hooked::<MixedCircuit, WP, CountingHook>(&circuit, &counter);
+
+    // The hook fired on the AND gate and the linear ops (one clear-text pass: at least 3 ticks)...
+    assert!(
+        counter.get() >= 3,
+        "the exec hook's post_* seam did not fire as expected (counter = {})",
+        counter.get()
+    );
+    // ...yet the computed output is byte-identical to the unhooked execution.
+    assert_eq!(
+        out_plain, out_hooked,
+        "an observing hook changed the executed output"
     );
 }
