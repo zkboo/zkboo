@@ -3,7 +3,7 @@
 //! Implementation of builder and frontend for ZKBoo challenge generation.
 
 use crate::{
-    backend::Frontend,
+    backend::{Backend, BackendHook, Frontend, Hooked, NoHook},
     crypto::{TAG_CHALLENGE, absorb_framed, GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
     prover::views::{
         ViewBuilderBackend, ViewCommitment, WordTriplePool,
@@ -65,11 +65,28 @@ impl<H: Hasher, PS: PseudoRandomGenerator, PV: PseudoRandomGenerator, S: Seed, W
     where
         VDC: ViewsDataCollector<H::Digest, S, FinalizeRes = [ViewCommitment<H::Digest>; 3]>,
     {
+        return self.next_iter_hooked::<VDC, NoHook>(collector_init_arg, ());
+    }
+
+    /// Starts a new challenge building iteration with both a caller-chosen [ViewsDataCollector] and
+    /// a per-operation [BackendHook] wrapping the view builder backend.
+    pub fn next_iter_hooked<VDC, BH>(
+        &'_ mut self,
+        collector_init_arg: VDC::InitArg,
+        hook_init_arg: BH::InitArg,
+    ) -> ChallengeBuildingIteration<'_, H, PS, PV, S, VDC, WTP, BH>
+    where
+        VDC: ViewsDataCollector<H::Digest, S, FinalizeRes = [ViewCommitment<H::Digest>; 3]>,
+        BH: BackendHook,
+    {
         let seeds: Zeroizing<[S; 3]> = Zeroizing::new(self.seed_prg.next());
         return ChallengeBuildingIteration {
             challenge_builder: self,
-            view_builder: ViewBuilderBackend::new_with_arg(seeds, collector_init_arg)
-                .into_view_builder(),
+            view_builder: Hooked::new(
+                BH::new(hook_init_arg),
+                ViewBuilderBackend::new_with_arg(seeds, collector_init_arg),
+            )
+            .into_frontend(),
         };
     }
 
@@ -101,9 +118,10 @@ pub struct ChallengeBuildingIteration<
     S: Seed,
     VDC: ViewsDataCollector<H::Digest, S>,
     WTP: WordTriplePool,
+    BH: BackendHook = NoHook,
 > {
     challenge_builder: &'a mut ChallengeBuilder<H, PS, PV, S, WTP>,
-    view_builder: Frontend<ViewBuilderBackend<H, PV, S, VDC, WTP>>,
+    view_builder: Frontend<Hooked<BH, ViewBuilderBackend<H, PV, S, VDC, WTP>>>,
 }
 
 impl<
@@ -114,10 +132,11 @@ impl<
     S: Seed,
     VDC: ViewsDataCollector<H::Digest, S, FinalizeRes = [ViewCommitment<H::Digest>; 3]>,
     WTP: WordTriplePool,
-> ChallengeBuildingIteration<'a, H, PS, PV, S, VDC, WTP>
+    BH: BackendHook,
+> ChallengeBuildingIteration<'a, H, PS, PV, S, VDC, WTP, BH>
 {
     /// The view builder [Frontend] for this challenge building iteration.
-    pub fn view_builder(&self) -> &Frontend<ViewBuilderBackend<H, PV, S, VDC, WTP>> {
+    pub fn view_builder(&self) -> &Frontend<Hooked<BH, ViewBuilderBackend<H, PV, S, VDC, WTP>>> {
         return &self.view_builder;
     }
 
@@ -140,7 +159,8 @@ impl<
     S: Seed,
     VDC: ViewsDataCollector<H::Digest, S>,
     WTP: WordTriplePool,
-> Drop for ChallengeBuildingIteration<'a, H, PS, PV, S, VDC, WTP>
+    BH: BackendHook,
+> Drop for ChallengeBuildingIteration<'a, H, PS, PV, S, VDC, WTP, BH>
 {
     /// Panics if the iteration is dropped before being finalized.
     fn drop(&mut self) {
