@@ -24,7 +24,7 @@ use zkboo::{
         challenge::build_challenge_entropy,
         proof::{build_proof, build_proof_hooked},
     },
-    verifier::{replay::OwnedFlexibleWordPairPool, verify},
+    verifier::{replay::OwnedFlexibleWordPairPool, verify, verify_hooked},
 };
 
 // --- A minimal Blake3-backed hasher (mirrors tests/test_challenge_collector.rs). -----------------
@@ -205,4 +205,62 @@ fn observing_hook_fires_yet_is_transcript_neutral() {
     )
     .expect("verification errored");
     assert!(is_valid, "hooked proof did not verify");
+}
+
+#[test]
+fn nohook_verify_matches_plain_verify() {
+    let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
+    let proof = build_proof::<MixedCircuit, H, PS, PV, S, WTP>(
+        &circuit,
+        SEED_ENTROPY,
+        challenge_entropy(&circuit),
+        NUM_ITERS,
+    );
+    let expected_output = exec::<MixedCircuit, WP>(&circuit);
+
+    let plain = verify::<MixedCircuit, H, PV, S, WPP>(&circuit, &expected_output, &proof, BINDING)
+        .expect("verify errored");
+    let nohook = verify_hooked::<MixedCircuit, H, PV, S, WPP, NoHook>(
+        &circuit,
+        &expected_output,
+        &proof,
+        BINDING,
+        (),
+    )
+    .expect("verify_hooked errored");
+
+    assert!(plain, "plain verify rejected a valid proof");
+    assert_eq!(plain, nohook, "NoHook-wrapped verify diverged from plain verify");
+}
+
+#[test]
+fn observing_hook_on_verify_fires_yet_verifies() {
+    let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
+    let proof = build_proof::<MixedCircuit, H, PS, PV, S, WTP>(
+        &circuit,
+        SEED_ENTROPY,
+        challenge_entropy(&circuit),
+        NUM_ITERS,
+    );
+    let expected_output = exec::<MixedCircuit, WP>(&circuit);
+
+    let counter = Cell::new(0usize);
+    let ok = verify_hooked::<MixedCircuit, H, PV, S, WPP, CountingHook>(
+        &circuit,
+        &expected_output,
+        &proof,
+        BINDING,
+        &counter,
+    )
+    .expect("verify_hooked errored");
+
+    // A correct verification result already implies the hooked replay reproduced the exact
+    // transcript (otherwise the challenge sequence would mismatch and verify would return false)...
+    assert!(ok, "hooked verify rejected a valid proof");
+    // ...and the hook demonstrably fired on the AND gate and the linear ops, per replayed response.
+    assert!(
+        counter.get() >= NUM_ITERS * 3,
+        "the verify hook's post_* seam did not fire as expected (counter = {})",
+        counter.get()
+    );
 }

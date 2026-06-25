@@ -129,6 +129,20 @@ impl<H: BackendHook, B: Backend> Hooked<H, B> {
     pub fn new(hook: H, inner: B) -> Self {
         return Self { hook, inner };
     }
+
+    /// A shared reference to the wrapped backend. Lets a consumer reach backend-specific data
+    /// through the wrapper — e.g. `frontend.with_backend(|h| h.inner().and_records())` on a hooked
+    /// view replayer.
+    #[inline]
+    pub fn inner(&self) -> &B {
+        return &self.inner;
+    }
+
+    /// A mutable reference to the wrapped backend (e.g. to toggle its recording before a replay).
+    #[inline]
+    pub fn inner_mut(&mut self) -> &mut B {
+        return &mut self.inner;
+    }
 }
 
 // Hand-rolled so a hook need not be `Debug`: only the inner backend (already `Debug` via `Backend`)
