@@ -39,6 +39,9 @@ pub trait WordTriplePool: Sized + Debug + Default {
         idx: WordIdx<W, N>,
         words: [CompositeWord<W, N>; 3],
     );
+
+    /// Reserves capacity for at least the given per-word-type word counts without over-allocating.
+    fn reserve(&mut self, _capacity: Shape) {}
 }
 
 /// Trait for word triple sources to be used by [WordTriplePoolWrapper]s.
@@ -52,6 +55,10 @@ pub trait WordTripleSource: Debug + Default {
     /// Ensures that the internal word vector for type `W` is large enough to accommodate the
     /// word indices contained in the given [WordIdx], extending it if necessary.
     fn resize<W: Word>(&mut self, new_len: usize);
+
+    /// Reserves capacity for at least the given per-word-type word counts without over-allocating,
+    /// so that growing the storage up to that shape does not reallocate.
+    fn reserve(&mut self, _capacity: Shape) {}
 }
 
 /// Implementation of [WordTripleSource] wrapping a [Words] struct.
@@ -92,6 +99,19 @@ impl WordTripleSource for WordTripleSourceWrapper {
         for words in self.words.iter_mut() {
             words.as_vec_mut::<W>().resize(new_len, W::ZERO);
         }
+    }
+
+    fn reserve(&mut self, capacity: Shape) {
+        on_all_words!(W, {
+            let cap = *capacity.as_value::<W>();
+            for words in self.words.iter_mut() {
+                let vec = words.as_vec_mut::<W>();
+                let len = vec.len();
+                if cap > len {
+                    vec.reserve_exact(cap - len);
+                }
+            }
+        });
     }
 }
 
@@ -151,6 +171,11 @@ impl<WS: WordTripleSource, M: MemoryManager> WordTriplePool for WordTriplePoolWr
                 word_slice[i] = w;
             }
         }
+    }
+
+    fn reserve(&mut self, capacity: Shape) {
+        self.word_triple_source.reserve(capacity);
+        self.memory_manager.reserve(capacity);
     }
 }
 
