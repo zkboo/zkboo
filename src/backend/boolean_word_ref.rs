@@ -63,8 +63,11 @@ impl<B: Backend> BooleanWordRef<B> {
         then: WordRef<B, W, N>,
         else_: WordRef<B, W, N>,
     ) -> WordRef<B, W, N> {
+        // Single-AND mux: `else_ ^ (mask & (then ^ else_))`. The two-term form
+        // `(mask & then) ^ (!mask & else_)` costs two nonlinear ANDs; this costs one, since the
+        // XORs are linear (free) in ZKBoo.
         let cond = WordRef::mask(self);
-        return (cond.clone() & then) ^ ((!cond) & else_);
+        return else_.clone() ^ (cond & (then ^ else_));
     }
 
     /// Select operation with constant `else_` value.
