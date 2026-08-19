@@ -503,7 +503,7 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
     /// Wrapping multiplication with a constant.
     ///
     /// The constant is recoded into non-adjacent form (NAF) at circuit-build time (see
-    /// [naf_digits]), so the in-circuit cost scales with the NAF weight of `rhs` (≈ WIDTH/3 on
+    /// `naf_digits`), so the in-circuit cost scales with the NAF weight of `rhs` (≈ WIDTH/3 on
     /// average, far fewer for constants close to a power of two) rather than its bit length.
     /// Each nonzero NAF digit contributes one wrapping add (`+1`) or subtract (`-1`).
     pub fn wrapping_mul_const<RHS: WordLike<W, N>>(self, rhs: RHS) -> Self {
@@ -580,14 +580,6 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
     }
 
     /// Carrying (double-width) multiplication with a constant rhs.
-    ///
-    /// The constant is recoded into non-adjacent form (NAF) at circuit-build time (see
-    /// [naf_digits]), so the in-circuit cost scales with the NAF weight of `rhs` (≈ WIDTH/3 on
-    /// average, far fewer for constants close to a power of two, e.g. pseudo-Mersenne moduli)
-    /// rather than its Hamming weight. Each nonzero NAF digit contributes one wide add (`+1`) or
-    /// subtract (`-1`) of the shifted multiplicand into the running accumulator. The accumulator
-    /// is kept in two's-complement form across the (transient) subtractions; the final product is
-    /// non-negative and fits the double width, so the low/high words are exact.
     pub fn wide_mul_const<RHS: WordLike<W, N>>(self, rhs: RHS) -> (Self, Self) {
         let naf = naf_digits(rhs.to_word());
         let mut acc_hi = WordRef::alloc_zero(&self.backend);
