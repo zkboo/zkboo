@@ -4,7 +4,7 @@
 
 use crate::{
     backend::{Backend, Frontend},
-    crypto::{GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{TAG_VIEW_COMMITMENT, absorb_framed, GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
     prover::{challenge::Party, proof::Response, views::ViewCommitment},
     verifier::replay::{
         WordPairPool,
@@ -56,7 +56,14 @@ impl<
             challenge,
             source,
             prgs: array::from_fn(|p| PV::new(opened_seeds[p].as_ref())),
-            hashers: array::from_fn(|_| H::new()),
+            // Mirror the prover: bind each opened party's seed into its view digest (ZKB++
+            // commitment). `opened_seeds[p]` is the seed of the party in replay slot `p`, so this
+            // matches the prover's per-party seed absorption.
+            hashers: array::from_fn(|p| {
+                let mut hasher = H::new();
+                absorb_framed(&mut hasher, TAG_VIEW_COMMITMENT, opened_seeds[p].as_ref());
+                hasher
+            }),
             states: WPP::default(),
             outputs: array::from_fn(|_| OwnedWordCollector::new()),
             _marker: PhantomData,
@@ -94,7 +101,7 @@ impl<
 
         let outs: [_; 2] = array::from_fn(|p| op(ins[p], p.into()));
 
-        self.update_hashers(outs);
+        // Linear gate: not hashed into the view digest (ZKB++ commitment; mirrors the prover).
         self.states.write(out, outs);
     }
 
@@ -115,7 +122,7 @@ impl<
 
         let outs: [_; 2] = array::from_fn(|p| op(inls[p], inrs[p], p.into()));
 
-        self.update_hashers(outs);
+        // Linear gate: not hashed into the view digest (see `unop`).
         self.states.write(out, outs);
     }
 
@@ -136,7 +143,7 @@ impl<
 
         let outs: [_; 2] = array::from_fn(|p| op(inls[p], inrs[p], p.into()));
 
-        self.update_hashers(outs);
+        // Linear gate: not hashed into the view digest (see `unop`).
         self.states.write(out, outs);
     }
 
@@ -235,7 +242,7 @@ impl<
             0 => {
                 let input_share_0 = self.prgs[0].next();
                 let input_share_1 = self.prgs[1].next();
-
+                self.update_hashers([input_share_0, input_share_1]);
                 let idx = self.states.alloc();
                 self.states.write(idx, [input_share_0, input_share_1]);
                 idx
@@ -243,7 +250,7 @@ impl<
             1 => {
                 let input_share1 = self.prgs[0].next();
                 let input_share2 = self.source.next_input_share2();
-
+                self.update_hashers([input_share1, input_share2]);
                 let idx = self.states.alloc();
                 self.states.write(idx, [input_share1, input_share2]);
                 idx
@@ -251,7 +258,7 @@ impl<
             2 => {
                 let input_share2 = self.source.next_input_share2();
                 let input_share0 = self.prgs[1].next();
-
+                self.update_hashers([input_share2, input_share0]);
                 let idx = self.states.alloc();
                 self.states.write(idx, [input_share2, input_share0]);
                 idx
@@ -402,7 +409,7 @@ impl<
 
         let outs: [CompositeWord<T, 1>; 2] = ins.map(|w| w.into().cast::<T>()).map(|w| w.into());
 
-        self.update_hashers(outs);
+        // Linear gate: not hashed into the view digest (see `unop`).
         self.states.write(out, outs);
     }
 
