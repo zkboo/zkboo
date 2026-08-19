@@ -13,6 +13,7 @@ use crate::{
         },
         views::WordTriplePool,
     },
+    word::Shape,
 };
 #[cfg(feature = "rayon")]
 use crate::{
@@ -85,6 +86,45 @@ pub fn build_proof_custom_hooked<
         num_iters,
         collector_init_arg,
         hook_init_arg,
+    );
+    let mut res_vec = Vec::new();
+    for iter in proof_builder.iter() {
+        circuit.exec(iter.view_builder());
+        res_vec.push(iter.finalize());
+    }
+    return res_vec;
+}
+
+/// Variant of [build_proof_custom] that reserves each iteration's view builder state pool to the
+/// given peak state shape (e.g. from a profiling pre-pass over the circuit) before execution.
+///
+/// This holds the prover's per-iteration heap at the exact high-water mark rather than the next
+/// power of two above it, trimming the capacity overshoot of the pools' geometric growth. It
+/// changes only allocated capacity, never the produced responses: with an accurate (or larger)
+/// `capacity` the result is byte-identical to [build_proof_custom]; [Shape::zero] recovers it
+/// exactly.
+pub fn build_proof_custom_reserved<
+    C: Circuit,
+    H: Hasher,
+    PS: PseudoRandomGenerator,
+    PV: PseudoRandomGenerator,
+    S: Seed,
+    RDC: ResponseDataCollector<H::Digest, S>,
+    WTP: WordTriplePool,
+>(
+    circuit: &C,
+    seed_entropy: &[u8],
+    challenge_entropy: Zeroizing<Vec<u8>>,
+    num_iters: usize,
+    collector_init_arg: RDC::InitArg,
+    capacity: Shape,
+) -> Vec<RDC::FinalizeRes> {
+    let mut proof_builder = ProofBuilder::<H, PS, PV, S, RDC, WTP>::new_with_arg_reserved(
+        seed_entropy,
+        challenge_entropy,
+        num_iters,
+        collector_init_arg,
+        capacity,
     );
     let mut res_vec = Vec::new();
     for iter in proof_builder.iter() {

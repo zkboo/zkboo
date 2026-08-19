@@ -10,7 +10,7 @@ use crate::{
         views::{ViewCommitment, WordTriplePool, collectors::ViewsDataCollector},
     },
     word::{
-        CompositeWord, Word, WordIdx,
+        CompositeWord, Shape, Word, WordIdx,
         collectors::{OwnedWordCollector, WordCollector},
     },
 };
@@ -101,6 +101,11 @@ impl<
     /// Alias of [Backend::into_frontend].
     pub fn into_view_builder(self) -> Frontend<Self> {
         return self.into_frontend();
+    }
+
+    /// Reserves internal state-pool capacity for at least the given per-word-type word counts.
+    pub fn reserve(&mut self, capacity: Shape) {
+        self.states.reserve(capacity);
     }
 
     /// Helper method to update internal state state of the three party hashers with the

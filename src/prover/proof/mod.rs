@@ -11,6 +11,7 @@ pub use builder::ProofBuilder;
 #[cfg(feature = "rayon")]
 pub use functions::par_build_proof;
 pub use functions::{
-    build_proof, build_proof_custom, build_proof_custom_hooked, build_proof_hooked,
+    build_proof, build_proof_custom, build_proof_custom_hooked, build_proof_custom_reserved,
+    build_proof_hooked,
 };
 pub use response::{Proof, Response};

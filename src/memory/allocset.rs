@@ -107,6 +107,16 @@ impl AllocSet {
         }
     }
 
+    /// Reserves block capacity for at least `total_words` words without over-allocating, so that
+    /// growing the set up to that size does not reallocate its block vector.
+    pub fn reserve_exact(&mut self, total_words: usize) {
+        let needed_blocks = (total_words + 63) / 64;
+        let current_block_capacity = self.blocks.capacity();
+        if needed_blocks > current_block_capacity {
+            self.blocks.reserve_exact(needed_blocks - current_block_capacity);
+        }
+    }
+
     /// Clears the allocation set, marking all words as free but retaining the allocated capacity.
     pub fn clear(&mut self) {
         self.blocks.clear();
