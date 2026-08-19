@@ -4,7 +4,7 @@
 
 use crate::{
     memory::AllocSet,
-    word::{ByWordType, Shape, Word, WordIdx},
+    word::{ByWordType, Shape, Word, WordIdx, on_all_words},
 };
 use alloc::vec::Vec;
 use core::fmt::Debug;
@@ -68,6 +68,10 @@ pub trait MemoryManager: Sized + Debug {
     ///
     /// ⚠️ Safety: Calling this on an index not currently allocated is undefined behaviour.
     fn decrease_refcount<W: Word, const N: usize>(&mut self, idx: WordIdx<W, N>);
+
+    /// Reserves internal capacity for at least the given per-word-type word counts, so that growing
+    /// the tracked state up to that shape does not reallocate.
+    fn reserve(&mut self, _capacity: Shape) {}
 
     /// Clears all allocated memory, resetting the memory manager to its initial state,
     /// but retaining any allocated capacity.
@@ -185,6 +189,18 @@ impl<RC: RefCount> MemoryManager for FlexibleMemoryManager<RC> {
             }
         }
     }
+    fn reserve(&mut self, capacity: Shape) {
+        on_all_words!(W, {
+            let cap = *capacity.as_value::<W>();
+            let refcounts = self.refcounts.as_vec_mut::<W>();
+            let len = refcounts.len();
+            if cap > len {
+                refcounts.reserve_exact(cap - len);
+            }
+            self.alloc_set.as_value_mut::<W>().reserve_exact(cap);
+        });
+    }
+
     fn clear(&mut self) {
         self.refcounts.map_mut(|refcounts| refcounts.clear());
         self.alloc_set.map_mut(|alloc_set| alloc_set.clear());

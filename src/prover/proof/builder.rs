@@ -10,6 +10,7 @@ use crate::{
         proof::collectors::ResponseDataCollector,
         views::{ViewBuilderBackend, WordTriplePool, collectors::ResponseDataSelector},
     },
+    word::Shape,
 };
 use alloc::vec::Vec;
 use zeroize::Zeroizing;
@@ -35,6 +36,7 @@ pub struct ProofBuilder<
     challenge_generator: ChallengeGenerator<HashPRG<H>>,
     collector_init_arg: RDC::InitArg,
     hook_init_arg: BH::InitArg,
+    capacity_hint: Shape,
     num_iters: usize,
     num_iters_yielded: usize,
     _marker: core::marker::PhantomData<(PV, S, WTP)>,
@@ -65,6 +67,7 @@ impl<
             num_iters_yielded: 0,
             collector_init_arg: Default::default(),
             hook_init_arg: (),
+            capacity_hint: Shape::zero(),
             _marker: core::marker::PhantomData,
         };
     }
@@ -94,6 +97,35 @@ impl<
             num_iters_yielded: 0,
             collector_init_arg,
             hook_init_arg: (),
+            capacity_hint: Shape::zero(),
+            _marker: core::marker::PhantomData,
+        };
+    }
+
+    /// Variant of [ProofBuilder::new_with_arg] that additionally reserves internal state-pool
+    /// capacity for the given peak state shape (e.g. obtained from a profiling pre-pass over the
+    /// circuit).
+    ///
+    /// Each iteration's view builder pool is reserved exactly to `capacity` before execution, so
+    /// its heap sits at the true high-water mark instead of the next power of two above it. This
+    /// changes only the pools' allocated capacity, never the produced responses: with an accurate
+    /// (or larger) `capacity` the proof is byte-identical to [ProofBuilder::new_with_arg]. Passing
+    /// [Shape::zero] recovers the unreserved behaviour exactly.
+    pub fn new_with_arg_reserved(
+        seed_entropy: &[u8],
+        challenge_entropy: Zeroizing<Vec<u8>>,
+        num_iters: usize,
+        collector_init_arg: RDC::InitArg,
+        capacity: Shape,
+    ) -> Self {
+        return ProofBuilder {
+            seed_prg: PS::new(seed_entropy),
+            challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
+            num_iters,
+            num_iters_yielded: 0,
+            collector_init_arg,
+            hook_init_arg: (),
+            capacity_hint: capacity,
             _marker: core::marker::PhantomData,
         };
     }
@@ -133,6 +165,7 @@ impl<
             num_iters_yielded: 0,
             collector_init_arg,
             hook_init_arg,
+            capacity_hint: Shape::zero(),
             _marker: core::marker::PhantomData,
         };
     }
@@ -157,12 +190,11 @@ impl<
         let collector_init_arg = self.collector_init_arg;
         let hook_init_arg = self.hook_init_arg;
         self.num_iters_yielded += 1;
+        let mut backend =
+            ViewBuilderBackend::new_with_arg(seeds, (challenge, collector_init_arg));
+        backend.reserve(self.capacity_hint);
         return Some(ProofBuildingIteration {
-            view_builder: Hooked::new(
-                BH::new(hook_init_arg),
-                ViewBuilderBackend::new_with_arg(seeds, (challenge, collector_init_arg)),
-            )
-            .into_frontend(),
+            view_builder: Hooked::new(BH::new(hook_init_arg), backend).into_frontend(),
         });
     }
 
