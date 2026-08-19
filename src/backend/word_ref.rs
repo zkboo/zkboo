@@ -522,61 +522,30 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
     }
 
     /// Wide (double-width) multiplication.
-    ///
-    /// Uses carry-save accumulation. The running double-width accumulator is kept in redundant
-    /// form as a `(sum, carry)` pair whose true value is `sum + carry`; each partial-product row
-    /// is merged in with a single 3:2 compressor (carry-save adder) per limb — a free XOR sum plus
-    /// one majority gate (one AND) for the carry — instead of a full carry-propagate addition. All
-    /// carry propagation is deferred to one final addition once every row has been absorbed. This
-    /// replaces the schoolbook method's per-row ripple carry with ~2 AND gates per row (one to
-    /// form the partial product, one for the majority), roughly halving the nonlinear-gate count.
-    ///
-    /// The double-width value is held as two words `(lo, hi)`. A carry can only ever be generated
-    /// up to bit `2*WIDTH - 1` (partial products occupy bits `0..=2*WIDTH-2`, and the true running
-    /// sum never exceeds the product `< 2^(2*WIDTH)`), so the `maj << 1` carry-shift never loses a
-    /// set bit past the top of `hi`.
     pub fn wide_mul(self, mut rhs: Self) -> (Self, Self) {
         let backend = self.backend.clone();
-        let mut sum_lo = WordRef::alloc_zero(&backend);
-        let mut sum_hi = WordRef::alloc_zero(&backend);
-        let mut carry_lo = WordRef::alloc_zero(&backend);
-        let mut carry_hi = WordRef::alloc_zero(&backend);
-        let mut add_lo = self;
-        let mut add_hi = WordRef::alloc_zero(&backend);
-        let mut add_hi_lo: Self;
-        for _ in 0..Self::WIDTH {
-            // Partial product T = (a << i) masked by rhs bit i (one AND per limb).
-            let mask = Self::mask(rhs.clone().lsb());
-            let t_lo = mask.clone().bitand(add_lo.clone());
-            let t_hi = mask.bitand(add_hi.clone());
-            // 3:2 compress (sum, carry, T) -> (sum', carry') with value(sum',carry') = value + T.
-            // sum'  = sum ^ carry ^ T              (free)
-            // maj   = T ^ ((sum ^ T) & (carry ^ T))  (one AND per limb)
-            // carry' = maj << 1                     (carries weigh one position more)
-            let new_sum_lo = sum_lo.clone().bitxor(carry_lo.clone()).bitxor(t_lo.clone());
-            let new_sum_hi = sum_hi.clone().bitxor(carry_hi.clone()).bitxor(t_hi.clone());
-            let maj_lo = t_lo
+        let a = self;
+        let mut sum = WordRef::alloc_zero(&backend);
+        let mut carry = WordRef::alloc_zero(&backend);
+        let mut lo = WordRef::alloc_zero(&backend);
+        for i in 0..Self::WIDTH {
+            // Partial product row: t = a gated by bit i of rhs (one AND per limb).
+            let t = Self::mask(rhs.clone().lsb()).bitand(a.clone());
+            // 3:2 compress (sum, carry, t): sum + carry + t = sum' + 2*maj (one AND per limb).
+            let sum_next = sum.clone().bitxor(carry.clone()).bitxor(t.clone());
+            let maj = t
                 .clone()
-                .bitxor(sum_lo.bitxor(t_lo.clone()).bitand(carry_lo.bitxor(t_lo)));
-            let maj_hi = t_hi
-                .clone()
-                .bitxor(sum_hi.bitxor(t_hi.clone()).bitand(carry_hi.bitxor(t_hi)));
-            // Shift the majority words left by one, carrying the top bit of the low limb into hi.
-            carry_hi = (maj_hi << 1).bitxor(maj_lo.clone() >> (Self::WIDTH - 1));
-            carry_lo = maj_lo << 1;
-            sum_lo = new_sum_lo;
-            sum_hi = new_sum_hi;
-            // Shift the multiplicand left by one for the next row.
-            (add_lo, add_hi_lo) = add_lo.overflowing_shl(1);
-            add_hi = (add_hi << 1).bitxor(add_hi_lo);
+                .bitxor(sum.bitxor(t.clone()).bitand(carry.bitxor(t)));
+            // Spill final product bit i (low bit of sum'), then halve the accumulator:
+            // sum <- sum' >> 1, carry <- maj (unshifted — its top bit is significant).
+            lo = lo.bitxor(Self::from_bool(sum_next.clone().lsb()) << i);
+            sum = sum_next >> 1;
+            carry = maj;
             rhs = rhs >> 1;
         }
-        // Resolve the redundant form with a single double-width carry-propagate addition.
-        let (res_lo, carry) = sum_lo.overflowing_add(carry_lo);
-        let res_hi = sum_hi
-            .wrapping_add(carry_hi)
-            .wrapping_add(Self::from_bool(carry));
-        return (res_lo, res_hi);
+        // High word: true value sum + carry <= 2^WIDTH - 2, so this addition has no carry-out.
+        let hi = sum.wrapping_add(carry);
+        return (lo, hi);
     }
 
     /// Carrying (double-width) multiplication with a constant rhs.
