@@ -4,19 +4,37 @@
 
 use crate::crypto::{GeneratesRandom, RandomGenerator};
 use alloc::vec::Vec;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use zeroize::DefaultIsZeroes;
 
 /// A party in the three-party MPC-in-the-Head protocol underlying ZKBoo.
 ///
 /// This is a light wrapper for the integer values 0, 1, and 2, with modular [Party::next] logic.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Party {
     index: u8,
 }
 
 impl DefaultIsZeroes for Party {}
+
+impl Serialize for Party {
+    /// Serialises the party as its single index byte.
+    fn serialize<Se: Serializer>(&self, serializer: Se) -> Result<Se::Ok, Se::Error> {
+        return self.index.serialize(serializer);
+    }
+}
+
+impl<'de> Deserialize<'de> for Party {
+    /// Deserialises a party from its index byte, **rejecting** any value outside `0..=2`.
+    fn deserialize<De: Deserializer<'de>>(deserializer: De) -> Result<Self, De::Error> {
+        let index = u8::deserialize(deserializer)?;
+        if index > 2 {
+            return Err(De::Error::custom("ZKBoo party index must be 0, 1, or 2"));
+        }
+        return Ok(Party { index });
+    }
+}
 
 impl Party {
     /// The party index, guaranteed to be 0, 1 or 2.
