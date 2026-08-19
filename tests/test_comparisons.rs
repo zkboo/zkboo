@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 mod common;
 
 use crate::common::test_all_words::test_on_all_words_and_composites;

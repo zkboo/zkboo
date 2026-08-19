@@ -21,8 +21,8 @@ pub fn exec<C: Circuit, WP: WordPool>(circuit: &C) -> Words {
 /// from `hook_init_arg`. With `BH = NoHook` the output is byte-identical to [exec]; a non-trivial
 /// hook can count operations or service a platform watchdog during the (non-secret) clear-text pass.
 ///
-/// ⚠️ The hook must not re-enter the backend (operations run inside the [Frontend]'s borrow); it
-/// should touch only its own state.
+/// ⚠️ The hook must not re-enter the backend (operations run inside the
+/// [Frontend](crate::backend::Frontend)'s borrow); it should touch only its own state.
 pub fn exec_hooked<C: Circuit, WP: WordPool, BH: BackendHook>(
     circuit: &C,
     hook_init_arg: BH::InitArg,
