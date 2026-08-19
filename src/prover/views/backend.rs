@@ -4,7 +4,7 @@
 
 use crate::{
     backend::{Backend, Frontend},
-    crypto::{GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{TAG_VIEW_COMMITMENT, absorb_framed, GeneratesRandom, Hasher, PseudoRandomGenerator, Seed},
     prover::{
         challenge::Party,
         views::{ViewCommitment, WordTriplePool, collectors::ViewsDataCollector},
@@ -57,7 +57,14 @@ impl<
         let collector = VDC::new(&seeds, VDC::InitArg::default());
         return Self {
             prgs: array::from_fn(|p| PV::new(seeds[p].as_ref())),
-            hashers: array::from_fn(|_| H::new()),
+            hashers: array::from_fn(|p| {
+                // ZKB++-style commitment: bind the party seed into the view digest (see `input` and
+                // `update_hashers`). The seed anchors the preimage so that dropping linear-wire
+                // hashing stays sound — the digest commits to (seed, input share, nonlinear traffic).
+                let mut hasher = H::new();
+                absorb_framed(&mut hasher, TAG_VIEW_COMMITMENT, seeds[p].as_ref());
+                hasher
+            }),
             states: WTP::default(),
             collector,
             outputs: array::from_fn(|_| OwnedWordCollector::new()),
@@ -88,7 +95,14 @@ impl<
         let collector = VDC::new(&seeds, collector_init_arg);
         return Self {
             prgs: array::from_fn(|p| PV::new(seeds[p].as_ref())),
-            hashers: array::from_fn(|_| H::new()),
+            hashers: array::from_fn(|p| {
+                // ZKB++-style commitment: bind the party seed into the view digest (see `input` and
+                // `update_hashers`). The seed anchors the preimage so that dropping linear-wire
+                // hashing stays sound — the digest commits to (seed, input share, nonlinear traffic).
+                let mut hasher = H::new();
+                absorb_framed(&mut hasher, TAG_VIEW_COMMITMENT, seeds[p].as_ref());
+                hasher
+            }),
             states: WTP::default(),
             collector,
             outputs: array::from_fn(|_| OwnedWordCollector::new()),
@@ -130,7 +144,8 @@ impl<
     ) {
         let ins = self.states.read(in_);
         let outs: [_; 3] = array::from_fn(|p| op(ins[p], p.into()));
-        self.update_hashers(outs);
+        // Linear gate: not hashed into the view digest (ZKB++ commitment — the verifier recomputes
+        // linear wires deterministically from seed + input shares + nonlinear traffic).
         self.states.write(out, outs);
     }
 
@@ -149,7 +164,7 @@ impl<
         let inls = self.states.read(inl);
         let inrs = self.states.read(inr);
         let outs: [_; 3] = array::from_fn(|p| op(inls[p], inrs[p], p.into()));
-        self.update_hashers(outs);
+        // Linear gate: not hashed into the view digest (see `unop`).
         self.states.write(out, outs);
     }
 
@@ -168,7 +183,7 @@ impl<
         let inls = self.states.read(inl);
         let inrs = [inr, inr, inr];
         let outs: [_; 3] = array::from_fn(|p| op(inls[p], inrs[p], p.into()));
-        self.update_hashers(outs);
+        // Linear gate: not hashed into the view digest (see `unop`).
         self.states.write(out, outs);
     }
 
@@ -210,6 +225,10 @@ impl<
         let input_share2 = word ^ input_share0 ^ input_share1;
         assert_eq!(input_share0 ^ input_share1 ^ input_share2, word);
         self.collector.push_input_share2(input_share2);
+        // Bind every party's input share into its view digest (ZKB++ commitment). This is essential
+        // once linear-wire hashing is dropped: without it a cheating prover could vary its input
+        // share across challenges and defeat the 2-of-3 extractor.
+        self.update_hashers([input_share0, input_share1, input_share2]);
         let idx = self.states.alloc();
         self.states
             .write(idx, [input_share0, input_share1, input_share2]);
@@ -348,7 +367,7 @@ impl<
     fn cast<W: Word, T: Word>(&mut self, in_: WordIdx<W>, out: WordIdx<T>) {
         let ins = self.states.read(in_);
         let outs: [CompositeWord<T, 1>; 3] = ins.map(|w| w.into().cast::<T>()).map(|w| w.into());
-        self.update_hashers(outs);
+        // Linear gate (width reinterpretation): not hashed into the view digest (see `unop`).
         self.states.write(out, outs);
     }
 
