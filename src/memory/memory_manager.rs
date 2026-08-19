@@ -12,6 +12,12 @@ use core::fmt::Debug;
 /// Trait for reference count types to be used by [MemoryManager]s.
 ///
 /// Implemented for [u8], [u16], [u32], [u64], [u128] and [usize] by default.
+///
+/// Note the width of the chosen type bounds the number of simultaneously live [WordIdx] clones of
+/// a single word: with `RC = u8` (the on-device configuration) a word held live in more than 255
+/// places at once overflows the count. Both [RefCount::increase] and [RefCount::decrease] detect
+/// the boundary and panic rather than wrapping, so an over-fanned circuit fails loudly and
+/// identically on prover and verifier — never silently, which would corrupt slot reuse.
 pub trait RefCount: Sized + Copy + Debug {
     const ZERO: Self;
     fn increase(&mut self);
@@ -24,7 +30,9 @@ macro_rules! impl_RefCount {
         impl RefCount for $ty {
             const ZERO: Self = 0;
             fn increase(&mut self) {
-                *self += 1;
+                *self = self
+                    .checked_add(1)
+                    .expect("Reference count overflow detected (too many live clones of a word).");
             }
             fn decrease(&mut self) {
                 if *self == 0 {
