@@ -61,11 +61,15 @@ impl<'a, D: Digest, S: Seed> ReplaySource<D> for ResponseReplaySource<'a, D, S> 
     }
 
     fn next_input_share2<W: Word, const N: usize>(&mut self) -> CompositeWord<W, N> {
-        let input_share2_vec = self
-            .response
-            .input_share_2()
-            .expect("Failed to get input share 2")
-            .as_vec::<W>();
+        // A well-formed response for a party-2-opening challenge always carries this share
+        // (enforced up front by `Response::is_well_formed` in the verifier). Should a malformed
+        // response reach here regardless, fall back to zero rather than panicking: the replayed
+        // view then cannot match the committed one, so the proof is rejected — never aborted.
+        let input_share2_words = match self.response.input_share_2() {
+            Some(share) => share,
+            None => return CompositeWord::<W, N>::ZERO,
+        };
+        let input_share2_vec = input_share2_words.as_vec::<W>();
         let input_share2_idx = self.input_share2_idx.as_value_mut::<W>();
         if *input_share2_idx + N > input_share2_vec.len() {
             return CompositeWord::<W, N>::ZERO;
