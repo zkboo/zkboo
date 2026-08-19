@@ -864,41 +864,54 @@ impl<W: Word, const N: usize> CompositeWord<W, N> {
         return (diff, borrow);
     }
 
-    /// Wrapping multiplication.
-    pub fn wrapping_mul(mut self, mut rhs: Self) -> Self {
-        let mut acc = Self::ZERO;
-        // Iterate over the full composite width `W::WIDTH * N`, not just a single word, so the
-        // result is correct modulo `2^(W::WIDTH * N)` for multi-word composites.
-        for _ in 0..Self::WIDTH {
-            let rhs_bit = rhs.clone().lsb();
-            if rhs_bit {
-                acc = acc.wrapping_add(self);
+    /// Wrapping multiplication (result modulo `2^(W::WIDTH * N)`).
+    pub fn wrapping_mul(self, rhs: Self) -> Self {
+        let a = self.le_words;
+        let b = rhs.le_words;
+        let mut lo = [W::ZERO; N];
+        for i in 0..N {
+            let mut carry = W::ZERO;
+            for j in 0..(N - i) {
+                let (plo, phi) = a[i].wide_mul(b[j]);
+                let (s0, c0) = lo[i + j].overflowing_add(plo);
+                let (s1, c1) = s0.overflowing_add(carry);
+                lo[i + j] = s1;
+                carry = phi
+                    .wrapping_add(W::from_bool(c0))
+                    .wrapping_add(W::from_bool(c1));
             }
-            self = self << 1;
-            rhs = rhs >> 1;
         }
-        return acc;
+        return Self::from_le_words(lo);
     }
 
-    /// Wide multiplication.
-    pub fn wide_mul(self, mut rhs: Self) -> (Self, Self) {
-        let mut acc_hi = Self::ZERO;
-        let mut acc_lo = Self::ZERO;
-        let mut add_hi = Self::ZERO;
-        let mut add_lo = self;
-        let mut add_hi_lo: Self;
-        let mut carry: bool;
-        for _ in 0..Self::WIDTH {
-            let rhs_bit = rhs.clone().lsb();
-            (acc_lo, carry) = acc_lo.overflowing_add(if rhs_bit { add_lo } else { Self::ZERO });
-            acc_hi = acc_hi
-                .wrapping_add(if rhs_bit { add_hi } else { Self::ZERO })
-                .wrapping_add(Self::from_bool(carry));
-            (add_lo, add_hi_lo) = add_lo.overflowing_shl(1);
-            add_hi = (add_hi << 1).bitxor(add_hi_lo);
-            rhs = rhs >> 1;
+    /// Wide multiplication: the full `2N`-limb product as a `(low, high)` pair.
+    pub fn wide_mul(self, rhs: Self) -> (Self, Self) {
+        let a = self.le_words;
+        let b = rhs.le_words;
+        let mut lo = [W::ZERO; N];
+        let mut hi = [W::ZERO; N];
+        for i in 0..N {
+            let mut carry = W::ZERO;
+            for j in 0..N {
+                let (plo, phi) = a[i].wide_mul(b[j]);
+                let p = i + j;
+                let cur = if p < N { lo[p] } else { hi[p - N] };
+                let (s0, c0) = cur.overflowing_add(plo);
+                let (s1, c1) = s0.overflowing_add(carry);
+                if p < N {
+                    lo[p] = s1;
+                } else {
+                    hi[p - N] = s1;
+                }
+                carry = phi
+                    .wrapping_add(W::from_bool(c0))
+                    .wrapping_add(W::from_bool(c1));
+            }
+            // The carry out of column `i + N - 1` lands in limb `i + N` (always in the high half),
+            // which no prior iteration has written.
+            hi[i] = carry;
         }
-        return (acc_lo, acc_hi);
+        return (Self::from_le_words(lo), Self::from_le_words(hi));
     }
 
     /// Less than comparison.
