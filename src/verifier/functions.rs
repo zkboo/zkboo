@@ -26,6 +26,10 @@ pub fn verify<C: Circuit, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: Wo
 ) -> Result<bool, ViewReplayError> {
     let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
     for response in proof {
+        // Reject a structurally malformed (untrusted) response before replaying it.
+        if !response.is_well_formed() {
+            return Ok(false);
+        }
         let iter = verifier.next_iter(response);
         circuit.exec(iter.view_replayer());
         iter.finalize()?;
@@ -55,6 +59,10 @@ pub fn verify_hooked<
 ) -> Result<bool, ViewReplayError> {
     let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
     for response in proof {
+        // Reject a structurally malformed (untrusted) response before replaying it.
+        if !response.is_well_formed() {
+            return Ok(false);
+        }
         let iter = verifier.next_iter_hooked::<BH>(response, hook_init_arg);
         circuit.exec(iter.view_replayer());
         iter.finalize()?;
@@ -84,9 +92,13 @@ where
     };
     use alloc::vec::Vec;
     use rayon::prelude::*;
-    // 1. Extract the vector of challenges from the proof, in sequence:
+    // 1. Extract the vector of challenges from the proof, in sequence, rejecting any
+    //    structurally malformed (untrusted) response before it reaches the parallel replay:
     let mut challenges = PartyVec::with_capacity(proof.len());
     for response in proof {
+        if !response.is_well_formed() {
+            return Ok(false);
+        }
         challenges.push(response.challenge());
     }
     // 2. Replay all responses in the proof, in parallel:

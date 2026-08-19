@@ -95,6 +95,13 @@ impl<D: Digest, S: Seed> Response<D, S> {
         return self.input_share_party_2.as_ref();
     }
 
+    /// Whether this response has the structure a well-formed proof requires: the party-2 input
+    /// share is present exactly when the challenge opens party 2's view (challenge 1 or 2) and
+    /// absent for challenge 0.
+    pub fn is_well_formed(&self) -> bool {
+        return self.input_share_party_2.is_some() == (self.challenge.index() != 0);
+    }
+
     /// The commitment digest for the unopened view in this response.
     ///
     /// For challenge party `j`, the unopened view is for party `(j+2)%3`.

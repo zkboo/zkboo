@@ -732,9 +732,9 @@ impl<W: Word, const N: usize> CompositeWord<W, N> {
     /// Count leading zeros in this composite word.
     pub fn leading_zeros(self) -> usize {
         let mut count = 0;
+        // Scan from the most significant word (highest LE index) downward.
         for i in (0..N).rev() {
-            let w = self.le_words[N - 1 - i];
-            //     LE representation ^^^^^^^^^
+            let w = self.le_words[i];
             if w == W::ZERO {
                 count += W::WIDTH;
             } else {
@@ -748,9 +748,9 @@ impl<W: Word, const N: usize> CompositeWord<W, N> {
     /// Count leading ones in this composite word.
     pub fn leading_ones(self) -> usize {
         let mut count = 0;
+        // Scan from the most significant word (highest LE index) downward.
         for i in (0..N).rev() {
-            let w = self.le_words[N - 1 - i];
-            //     LE representation ^^^^^^^^^
+            let w = self.le_words[i];
             if w == W::MAX {
                 count += W::WIDTH;
             } else {

@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use core::{fmt::Debug, marker::PhantomData};
+use zeroize::Zeroizing;
 
 /// Trait for collectors of [Views] data used by the view building logic.
 pub trait ViewsDataCollector<D: Digest, S: Seed>: Debug {
@@ -51,7 +52,9 @@ pub struct ViewsDataCollectorAdapter<
     WCI: WordCollector + Default,
     WCM: WordCollector + Default,
 > {
-    seeds: [S; 3],
+    /// The iteration's seed triple is ZK randomness; held in [Zeroizing] so the collector's copy is
+    /// wiped when dropped (notably on the challenge-phase relayer path, which never reads it).
+    seeds: Zeroizing<[S; 3]>,
     input_share_2: WCI,
     and_msgs: [WCM; 3],
     _marker: core::marker::PhantomData<D>,
@@ -71,7 +74,7 @@ impl<D: Digest, S: Seed, WCI: WordCollector + Default, WCM: WordCollector + Defa
 
     fn new(seeds: &[S; 3], _arg: Self::InitArg) -> Self {
         return Self {
-            seeds: seeds.clone(),
+            seeds: Zeroizing::new(seeds.clone()),
             input_share_2: WCI::default(),
             and_msgs: [WCM::default(), WCM::default(), WCM::default()],
             _marker: core::marker::PhantomData,
@@ -89,8 +92,10 @@ impl<D: Digest, S: Seed, WCI: WordCollector + Default, WCM: WordCollector + Defa
     }
 
     fn finalize(self, commitments: [ViewCommitment<D>; 3]) -> Self::FinalizeRes {
+        // Clone the seeds out for the consumer (the response reveals the opened parties' seeds);
+        // the collector's own `Zeroizing` copy is wiped as `self` drops at the end of finalize.
         return (
-            self.seeds,
+            (*self.seeds).clone(),
             self.input_share_2.finalize(),
             self.and_msgs.map(|collector| collector.finalize()),
             commitments,
