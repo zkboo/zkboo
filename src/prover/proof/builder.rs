@@ -39,6 +39,7 @@ pub struct ProofBuilder<
     capacity_hint: Shape,
     num_iters: usize,
     num_iters_yielded: usize,
+    num_iters_skipped: usize,
     _marker: core::marker::PhantomData<(PV, S, WTP)>,
 }
 
@@ -65,6 +66,7 @@ impl<
             challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
             num_iters,
             num_iters_yielded: 0,
+            num_iters_skipped: 0,
             collector_init_arg: Default::default(),
             hook_init_arg: (),
             capacity_hint: Shape::zero(),
@@ -95,6 +97,7 @@ impl<
             challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
             num_iters,
             num_iters_yielded: 0,
+            num_iters_skipped: 0,
             collector_init_arg,
             hook_init_arg: (),
             capacity_hint: Shape::zero(),
@@ -123,6 +126,7 @@ impl<
             challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
             num_iters,
             num_iters_yielded: 0,
+            num_iters_skipped: 0,
             collector_init_arg,
             hook_init_arg: (),
             capacity_hint: capacity,
@@ -163,6 +167,7 @@ impl<
             challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
             num_iters,
             num_iters_yielded: 0,
+            num_iters_skipped: 0,
             collector_init_arg,
             hook_init_arg,
             capacity_hint: Shape::zero(),
@@ -180,9 +185,43 @@ impl<
         return self.num_iters_yielded;
     }
 
+    /// Returns the number of iterations that have been skipped so far (see
+    /// [ProofBuilder::skip_iters]).
+    pub fn num_iters_skipped(&self) -> usize {
+        return self.num_iters_skipped;
+    }
+
+    /// Returns the number of iterations that have neither been yielded nor skipped yet.
+    pub fn num_iters_remaining(&self) -> usize {
+        return self.num_iters - self.num_iters_yielded - self.num_iters_skipped;
+    }
+
+    /// Skips the next `num_iters` iterations, advancing the seed and challenge streams past them
+    /// without executing the circuit, and counting them towards finalisation.
+    pub fn skip_iters(&mut self, num_iters: usize) {
+        assert!(
+            num_iters <= self.num_iters_remaining(),
+            "Cannot skip {} iterations: only {} of {} remain",
+            num_iters,
+            self.num_iters_remaining(),
+            self.num_iters
+        );
+        for _ in 0..num_iters {
+            let _seeds: Zeroizing<[S; 3]> = Zeroizing::new(self.seed_prg.next());
+            let _challenge: Party = self.challenge_generator.next();
+        }
+        self.num_iters_skipped += num_iters;
+    }
+
+    /// Skips all iterations that have not been yielded or skipped yet, so that the builder can be
+    /// finalised.
+    pub fn skip_remaining_iters(&mut self) {
+        self.skip_iters(self.num_iters_remaining());
+    }
+
     /// Yields the next iteration of the proof building process, if any.
     pub fn next_iter(&mut self) -> Option<ProofBuildingIteration<H, PV, S, RDC, WTP, BH>> {
-        if self.num_iters_yielded == self.num_iters {
+        if self.num_iters_remaining() == 0 {
             return None;
         }
         let seeds: Zeroizing<[S; 3]> = Zeroizing::new(self.seed_prg.next());
@@ -190,8 +229,7 @@ impl<
         let collector_init_arg = self.collector_init_arg;
         let hook_init_arg = self.hook_init_arg;
         self.num_iters_yielded += 1;
-        let mut backend =
-            ViewBuilderBackend::new_with_arg(seeds, (challenge, collector_init_arg));
+        let mut backend = ViewBuilderBackend::new_with_arg(seeds, (challenge, collector_init_arg));
         backend.reserve(self.capacity_hint);
         return Some(ProofBuildingIteration {
             view_builder: Hooked::new(BH::new(hook_init_arg), backend).into_frontend(),
@@ -207,9 +245,10 @@ impl<
 
     /// Finalizes the builder.
     ///
-    /// Returns an error if not all iterations have been yielded and finalized (necessarily in order).
+    /// Returns an error if not all iterations have been yielded and finalized, or skipped
+    /// (necessarily in order).
     pub fn try_finalize(self) -> Result<(), Self> {
-        if self.num_iters_yielded != self.num_iters {
+        if self.num_iters_remaining() != 0 {
             return Err(self);
         }
         Ok(())
@@ -217,12 +256,16 @@ impl<
 
     /// Finalizes the builder.
     ///
-    /// Panics if not all iterations have been yielded and finalized (necessarily in order).
+    /// Panics if not all iterations have been yielded and finalized, or skipped (necessarily in
+    /// order).
     pub fn finalize(self) {
         assert_eq!(
-            self.num_iters_yielded, self.num_iters,
-            "Proof builder finalized before all iterations were yielded: num_iters_yielded = {}, num_iters = {}",
-            self.num_iters_yielded, self.num_iters
+            self.num_iters_remaining(),
+            0,
+            "Proof builder finalized before all iterations were yielded or skipped: num_iters_yielded = {}, num_iters_skipped = {}, num_iters = {}",
+            self.num_iters_yielded,
+            self.num_iters_skipped,
+            self.num_iters
         );
     }
 }
@@ -262,7 +305,7 @@ impl<
 
     /// Returns the number of iterations remaining to be yielded.
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.proof_builder.num_iters() - self.proof_builder.num_iters_yielded();
+        let remaining = self.proof_builder.num_iters_remaining();
         return (remaining, Some(remaining));
     }
 }
@@ -280,8 +323,7 @@ impl<
 {
     /// Returns the number of iterations remaining to be yielded.
     fn len(&self) -> usize {
-        let remaining = self.proof_builder.num_iters() - self.proof_builder.num_iters_yielded();
-        return remaining;
+        return self.proof_builder.num_iters_remaining();
     }
 }
 
