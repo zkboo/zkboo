@@ -3,7 +3,7 @@
 //! A `no_std` implementation of the [ZKBoo protocol](https://eprint.iacr.org/2016/163),
 //! using [ZKB++ optimisations](https://eprint.iacr.org/2017/279).
 //!
-//! 🚧 Warning: This crate is work in progress, not yet suitable for use in production. 🚧
+//! ⚠️ Warning: This crate has not undergone an external security review. ⚠️
 //!
 //! # Generic Parameters
 //!
