@@ -10,6 +10,13 @@ use crate::{
 use alloc::vec::Vec;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+/// Identity of the proof format: the layout of the response bytes emitted by the prover, together
+/// with the view-commitment scheme those bytes are checked against.
+///
+/// Two proofs are interchangeable only if they were produced under the same value of this constant.
+/// Bump it on any change to the emitted response bytes or to the commitment preimages.
+pub const PROOF_FORMAT_VERSION: u32 = 3;
+
 /// ZKBoo response to a challenge, containing the necessary data to open two views.
 /// The challenge is stored implicitly into the variant.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
