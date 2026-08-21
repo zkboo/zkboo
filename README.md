@@ -6,10 +6,9 @@
 
 An implementation of the [ZKBoo protocol](https://eprint.iacr.org/2016/163), using [ZKB++ optimisations](https://eprint.iacr.org/2017/279).
 
-## 🚧 Warning 🚧
+## ⚠️ Unaudited ⚠️
 
-This crate is work in progress, not yet suitable for use in production.
-Security has not been reviewed and performance has not been optimised.
+This implementation has not undergone an external security review.
 Use at your own risk.
 
 ## License
