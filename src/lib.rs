@@ -66,6 +66,13 @@
 //!   [ResponseDataCollector](crate::prover::proof::collectors::ResponseDataCollector).
 //! - The [par_prove](crate::prover::par_prove) function variant of [prove](crate::prover::prove)
 //!   using [rayon] to generate responses in parallel.
+//! - The [ProofBuilder](crate::prover::proof::ProofBuilder) struct drives response generation one
+//!   iteration at a time, and can skip iterations
+//!   ([ProofBuilder::skip_iters](crate::prover::proof::ProofBuilder::skip_iters)) to emit only a
+//!   sub-range of a proof's responses, making long proofs resumable and splittable across provers.
+//!
+//! The format of the responses, together with the view-commitment scheme they are checked against,
+//! is identified by [PROOF_FORMAT_VERSION].
 //!
 //! # Proof Verification
 //!
@@ -114,3 +121,5 @@ pub mod prover;
 pub mod utils;
 pub mod verifier;
 pub mod word;
+
+pub use crate::prover::proof::PROOF_FORMAT_VERSION;
