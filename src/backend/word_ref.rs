@@ -548,6 +548,92 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
         return (lo, hi);
     }
 
+    /// Wide squaring: the full `2N`-limb square as a `(low, high)` pair, cheaper than
+    /// `wide_mul(self, self)`.
+    pub fn wide_square(self) -> (Self, Self) {
+        let backend = self.backend.clone();
+        let width = W::WIDTH * N;
+        let limb_bits = W::WIDTH;
+        let a: [WordRef<B, W, 1>; N] = self.into_le_words();
+        let zero = || WordRef::<B, W, 1>::alloc_zero(&backend);
+
+        // Bit `i` of `a` at position `2i`: the diagonal, and the base the rows accumulate onto.
+        let mut diagonal: Vec<WordRef<B, W, 1>> = (0..2 * N).map(|_| zero()).collect();
+        for i in 0..width {
+            let bit = a[i / limb_bits].clone().bit_at(i % limb_bits);
+            xor_bit_at(&mut diagonal, 2 * i, bit, limb_bits);
+        }
+
+        // The rows spill two bits each, one of which collides with the other row's — so two
+        // accumulators, summed at the end rather than XORed together.
+        let mut spilled_sum: Vec<WordRef<B, W, 1>> = (0..2 * N).map(|_| zero()).collect();
+        let mut spilled_carry: Vec<WordRef<B, W, 1>> = (0..2 * N).map(|_| zero()).collect();
+        // Carry-save accumulator: the pending contribution at the current position is `sum + 2·c`.
+        let mut sum: Vec<WordRef<B, W, 1>> = Vec::new();
+        let mut c: Vec<WordRef<B, W, 1>> = Vec::new();
+        for i in 0..width.saturating_sub(1) {
+            // Row `i` needs only the bits of `a` above `i`, so this many limbs and no more. The
+            // count never grows, and the accumulator's discarded high limbs are provably zero.
+            let limbs = (width - i).div_ceil(limb_bits);
+            sum.resize_with(limbs, &zero);
+            c.resize_with(limbs, &zero);
+            let mask = WordRef::<B, W, 1>::mask(a[i / limb_bits].clone().bit_at(i % limb_bits));
+            let row: Vec<WordRef<B, W, 1>> = shifted_limbs(&a, i + 1, limbs, limb_bits)
+                .into_iter()
+                .map(|word| mask.clone().bitand(word))
+                .collect();
+            // 3:2 compression: sum + 2·c + row = sum' + 2·majority.
+            let next_sum: Vec<WordRef<B, W, 1>> = (0..limbs)
+                .map(|l| sum[l].clone().bitxor(c[l].clone()).bitxor(row[l].clone()))
+                .collect();
+            let majority: Vec<WordRef<B, W, 1>> = (0..limbs)
+                .map(|l| {
+                    let with_sum = sum[l].clone().bitxor(row[l].clone());
+                    let with_carry = c[l].clone().bitxor(row[l].clone());
+                    row[l].clone().bitxor(with_sum.bitand(with_carry))
+                })
+                .collect();
+            // `sum' + 2·majority = sum'_0 + 2·sum'_1 + 2·majority_0 + 4·[(sum' >> 2) + (majority >> 1)]`:
+            // the first three terms are final and spill out here, the rest stays pending.
+            xor_bit_at(
+                &mut spilled_sum,
+                2 * i + 2,
+                next_sum[0].clone().bit_at(0),
+                limb_bits,
+            );
+            xor_bit_at(
+                &mut spilled_sum,
+                2 * i + 3,
+                next_sum[0].clone().bit_at(1),
+                limb_bits,
+            );
+            xor_bit_at(
+                &mut spilled_carry,
+                2 * i + 3,
+                majority[0].clone().bit_at(0),
+                limb_bits,
+            );
+            sum = shift_limbs_right(&next_sum, 2, limb_bits);
+            c = shift_limbs_right(&majority, 1, limb_bits);
+        }
+
+        // The three parts are genuinely added, not XORed — a spilled sum bit and a spilled carry
+        // bit share position `2i+3`, and the diagonal shares every even position with a spilled
+        // one. Two double-width additions, done on whole words rather than limb by limb: the
+        // carry-out bookkeeping of an addition is itself nonlinear, so fewer, wider additions are
+        // cheaper than more, narrower ones.
+        let (mut low, mut high) = join_halves::<B, W, N>(diagonal);
+        for addend in [spilled_sum, spilled_carry] {
+            let (addend_low, addend_high) = join_halves::<B, W, N>(addend);
+            let (sum, carried) = low.overflowing_add(addend_low);
+            low = sum;
+            high = high
+                .wrapping_add(addend_high)
+                .wrapping_add(Self::from_bool(carried));
+        }
+        return (low, high);
+    }
+
     /// Carrying (double-width) multiplication with a constant rhs.
     pub fn wide_mul_const<RHS: WordLike<W, N>>(self, rhs: RHS) -> (Self, Self) {
         let naf = naf_digits(rhs.to_word());
@@ -991,4 +1077,65 @@ impl<B: Backend, W: Word, const N: usize, RHS: WordLike<W, N>> MulAssign<RHS> fo
         let this = unsafe { core::ptr::read(self) };
         unsafe { core::ptr::write(self, this * rhs) }
     }
+}
+
+/// XORs a single bit into position `position` of a little-endian array of one-limb words.
+fn xor_bit_at<B: Backend, W: Word>(
+    limbs: &mut [WordRef<B, W, 1>],
+    position: usize,
+    bit: BooleanWordRef<B>,
+    limb_bits: usize,
+) {
+    let index = position / limb_bits;
+    let placed = WordRef::<B, W, 1>::from_bool(bit) << (position % limb_bits);
+    limbs[index] = limbs[index].clone().bitxor(placed);
+}
+
+/// The low `limbs` limbs of `value >> shift`, as one-limb words.
+fn shifted_limbs<B: Backend, W: Word>(
+    value: &[WordRef<B, W, 1>],
+    shift: usize,
+    limbs: usize,
+    limb_bits: usize,
+) -> Vec<WordRef<B, W, 1>> {
+    let whole = shift / limb_bits;
+    let bits = shift % limb_bits;
+    return (0..limbs)
+        .map(|l| {
+            let low = value
+                .get(l + whole)
+                .map(|word| word.clone() >> bits)
+                .unwrap_or_else(|| value[0].alloc_new_zero());
+            if bits == 0 {
+                return low;
+            }
+            let high = value
+                .get(l + whole + 1)
+                .map(|word| word.clone() << (limb_bits - bits))
+                .unwrap_or_else(|| value[0].alloc_new_zero());
+            // The two halves occupy disjoint bits, so XOR is the OR of them, and free.
+            return low.bitxor(high);
+        })
+        .collect();
+}
+
+/// `value >> shift` for `shift < limb_bits`, over a little-endian array of one-limb words.
+fn shift_limbs_right<B: Backend, W: Word>(
+    value: &[WordRef<B, W, 1>],
+    shift: usize,
+    limb_bits: usize,
+) -> Vec<WordRef<B, W, 1>> {
+    return shifted_limbs(value, shift, value.len(), limb_bits);
+}
+
+/// Splits a `2N`-limb little-endian array of one-limb words into its low and high `N`-limb halves.
+fn join_halves<B: Backend, W: Word, const N: usize>(
+    limbs: Vec<WordRef<B, W, 1>>,
+) -> (WordRef<B, W, N>, WordRef<B, W, N>) {
+    let mut words = limbs.into_iter();
+    let low =
+        WordRef::<B, W, N>::from_le_words(array::from_fn(|_| words.next().expect("2N limbs")));
+    let high =
+        WordRef::<B, W, N>::from_le_words(array::from_fn(|_| words.next().expect("2N limbs")));
+    return (low, high);
 }
