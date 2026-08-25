@@ -158,8 +158,24 @@ pub trait Word:
     fn leading_ones(self) -> usize;
 
     /// Carry generation operation.
+    ///
+    /// From propagate and generate words `p` and `g` and a carry in, produces the word of carries
+    /// *into* each bit position (bit 0 being the carry in) and the carry out of the top. The
+    /// recurrence is `c_{i+1} = (c_i & p_i) ^ g_i`, one bit at a time.
+    ///
+    /// Every caller that is adding produces disjoint `p = a ^ b` and `g = a & b`, and for disjoint
+    /// inputs the whole recurrence is a single machine addition: `(p | g) + g + c` reconstructs the
+    /// sum `a + b + c`, which is `p ^ carries` by definition, so the carries are that sum XOR `p`.
+    /// This matters — the operation runs per share per gate on the prover's hot path, and per limb
+    /// of every host-side big-integer addition — so it is worth the branch. Overlapping `p` and `g`
+    /// do not arise from an addition but are accepted, and take the bit-serial path.
     fn carry(self, g: Self, c: bool) -> (Self, bool) {
         let p = self;
+        if p & g == Self::ZERO {
+            let (sum, carry_0) = (p | g).overflowing_add(g);
+            let (sum, carry_1) = sum.overflowing_add(Self::from_bool(c));
+            return (sum ^ p, carry_0 | carry_1);
+        }
         let mut carry = Self::ZERO;
         let mut mask = Self::ONE;
         let mut c: Self = Self::from_bool(c);
