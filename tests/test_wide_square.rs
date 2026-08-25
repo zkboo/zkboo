@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
+//! [`WordRef::wide_square`] against [`WordRef::wide_mul`], which it must reproduce exactly.
+//!
+//! The squarer exploits `a_i · a_i = a_i` to narrow each partial-product row to the limbs above
+//! the bit that generated it, so its rows shrink as the square is built. That is a bit-level
+//! rearrangement of the same sum, and the only convincing check is that it agrees with the
+//! multiplier bit for bit — at the corners as well as at random.
+
+use zkboo::{
+    backend::{Backend, Frontend, WordRef},
+    circuit::Circuit,
+    executor::{OwnedFlexibleWordPool, exec},
+    word::{CompositeWord, Word, Words},
+};
+
+type WP = OwnedFlexibleWordPool<usize>;
+
+/// Outputs `1` iff `wide_square(a)` equals `wide_mul(a, a)`, both halves.
+struct SquareEqMul<W: Word, const N: usize> {
+    a: CompositeWord<W, N>,
+}
+
+impl<W: Word, const N: usize> Circuit for SquareEqMul<W, N> {
+    fn exec<B: Backend>(&self, fe: &Frontend<B>) {
+        let a: WordRef<B, W, N> = fe.input(self.a);
+        let (squared_low, squared_high) = a.clone().wide_square();
+        let (product_low, product_high) = a.clone().wide_mul(a);
+        let matches = squared_low.eq(product_low) & squared_high.eq(product_high);
+        fe.output(matches.into());
+    }
+}
+
+fn ok() -> Words {
+    let mut expected = Words::new();
+    expected.as_vec_mut::<u8>().push(1u8);
+    return expected;
+}
+
+fn check<W: Word, const N: usize>(a: CompositeWord<W, N>) {
+    assert_eq!(
+        exec::<_, WP>(&SquareEqMul { a }),
+        ok(),
+        "wide_square disagrees with wide_mul for {a:?}"
+    );
+}
+
+/// A cheap deterministic spread of values, plus the corners.
+fn samples<W: Word, const N: usize>() -> Vec<CompositeWord<W, N>> {
+    let one = CompositeWord::<W, N>::ONE;
+    let mut values = vec![
+        CompositeWord::<W, N>::ZERO,
+        one,
+        CompositeWord::MAX,
+        CompositeWord::MAX.wrapping_sub(one),
+        one << (W::WIDTH * N - 1),
+        (one << (W::WIDTH * N - 1)).wrapping_sub(one),
+        one << W::WIDTH,
+        (one << W::WIDTH).wrapping_sub(one),
+    ];
+    // A few structured values that exercise every limb boundary.
+    let mut state = one;
+    for _ in 0..6 {
+        state = state
+            .wrapping_mul(CompositeWord::from_le_words(core::array::from_fn(|i| {
+                if i == 0 { W::MAX } else { W::ZERO }
+            })))
+            .wrapping_add(CompositeWord::from_le_words(core::array::from_fn(|i| {
+                if i == 0 { W::ONE } else { W::ZERO }
+            })));
+        values.push(state);
+    }
+    return values;
+}
+
+#[cfg(feature = "u64")]
+#[test]
+fn squaring_matches_multiplication_at_u64x4() {
+    for a in samples::<u64, 4>() {
+        check(a);
+    }
+}
+
+#[test]
+fn squaring_matches_multiplication_at_other_widths() {
+    for a in samples::<u8, 1>() {
+        check(a);
+    }
+    for a in samples::<u8, 3>() {
+        check(a);
+    }
+    #[cfg(feature = "u32")]
+    for a in samples::<u32, 2>() {
+        check(a);
+    }
+}
+
+#[test]
+fn squaring_is_exhaustively_correct_at_eight_bits() {
+    for a in 0..=u8::MAX {
+        check(CompositeWord::<u8, 1>::from_le_words([a]));
+    }
+}
