@@ -114,3 +114,35 @@ fn squaring_is_exhaustively_correct_at_the_narrowest_width_that_narrows() {
         }
     }
 }
+
+/// A seeded xorshift, so a failure here is reproducible without a dependency's idea of a seed.
+fn pseudo_random(state: &mut u64) -> u64 {
+    *state ^= *state << 13;
+    *state ^= *state >> 7;
+    *state ^= *state << 17;
+    return *state;
+}
+
+#[test]
+fn squaring_survives_repeated_narrowing() {
+    // Two limbs narrow exactly once, and only ever from two limbs to one, so the exhaustive test
+    // above cannot show a row shrinking while several limbs remain, nor two shrinks in a row. Four
+    // eight-bit limbs shrink three times and cannot be exhausted, so sweep them instead — biased
+    // towards the limb boundaries and the all-ones and power-of-two neighbourhoods where a
+    // misplaced carry-save spill is likeliest to show.
+    let mut state = 0x2545_f491_4f6c_dd1d;
+    for _ in 0..2_000 {
+        let bytes: [u8; 4] = core::array::from_fn(|_| {
+            let draw = pseudo_random(&mut state);
+            let shift = ((draw >> 8) % 8) as u32;
+            return match draw % 5 {
+                0 => 0x00,
+                1 => 0xFF,
+                2 => 1u8 << shift,
+                3 => (1u8 << shift).wrapping_sub(1),
+                _ => (draw >> 8) as u8,
+            };
+        });
+        check(CompositeWord::<u8, 4>::from_le_words(bytes));
+    }
+}
