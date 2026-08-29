@@ -45,6 +45,25 @@
 //! The proof verification logic does not use the value of input words, but their type/width
 //! remains relevant for the purpose of internal memory management.
 //!
+//! ## Advice and assertions
+//!
+//! A value the prover knows and the verifier does not is an input, so **prover-supplied advice
+//! needs no mechanism of its own**: the prover computes it on the host, where it holds the witness
+//! to compute it from, and passes it through [Frontend::input](crate::backend::Frontend::input)
+//! like any other secret. The `dummy` constructor above fills the slot with anything at all,
+//! precisely because verification never reads an input's value.
+//!
+//! Advice constrains nothing by itself — a prover may put whatever it likes in the slot — so a
+//! circuit that relies on it must pin it down with in-circuit assertions.
+//! [Assertions](crate::circuit::Assertions) accumulates those by conjunction into a single flag,
+//! which the circuit outputs as an ordinary output word; a verifier's expected output carries `1`
+//! there because the circuit says it outputs it there. The whole mechanism is ordinary gates, and
+//! neither the [Backend](crate::backend::Backend) nor the proof format knows what an assertion is.
+//!
+//! ⚠️ **Advice not covered by an assertion is unconstrained**, and nothing in this crate can detect
+//! that: a circuit using unasserted advice produces perfectly valid proofs of a statement weaker
+//! than it appears to make.
+//!
 //! The [WordRef](crate::backend::WordRef) struct provides an abstraction for words in the
 //! circuit state, allowing the circuit to define its logic independently on the underlying choice
 //! of [Backend](crate::backend::Backend). This allows the same circuit implementation to be used
