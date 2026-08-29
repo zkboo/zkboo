@@ -166,9 +166,11 @@ pub trait Word:
     /// Every caller that is adding produces disjoint `p = a ^ b` and `g = a & b`, and for disjoint
     /// inputs the whole recurrence is a single machine addition: `(p | g) + g + c` reconstructs the
     /// sum `a + b + c`, which is `p ^ carries` by definition, so the carries are that sum XOR `p`.
-    /// This matters — the operation runs per share per gate on the prover's hot path, and per limb
-    /// of every host-side big-integer addition — so it is worth the branch. Overlapping `p` and `g`
-    /// do not arise from an addition but are accepted, and take the bit-serial path.
+    /// This matters because it runs per limb of every host-side big-integer addition, and so under
+    /// every piece of cleartext field arithmetic the circuit builders and the advice functions do.
+    /// (It is *not* on the prover's gate path: each backend implements the in-circuit `carry` gate
+    /// over its own shares and none of them route through here.) Overlapping `p` and `g` do not
+    /// arise from an addition but are accepted, and take the bit-serial path.
     fn carry(self, g: Self, c: bool) -> (Self, bool) {
         let p = self;
         if p & g == Self::ZERO {

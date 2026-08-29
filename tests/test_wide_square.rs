@@ -101,3 +101,16 @@ fn squaring_is_exhaustively_correct_at_eight_bits() {
         check(CompositeWord::<u8, 1>::from_le_words([a]));
     }
 }
+
+#[test]
+fn squaring_is_exhaustively_correct_at_the_narrowest_width_that_narrows() {
+    // The point of the squarer is that its rows shrink, discarding the high limbs of the carry-save
+    // accumulator as they go. At one limb nothing ever shrinks, so the exhaustive test above — and
+    // every structured sample of the two above it — leaves the interesting part uncovered. Two
+    // limbs is the smallest width where a row narrows, and at eight-bit limbs it is exhaustible.
+    for high in 0..=u8::MAX {
+        for low in 0..=u8::MAX {
+            check(CompositeWord::<u8, 2>::from_le_words([low, high]));
+        }
+    }
+}
