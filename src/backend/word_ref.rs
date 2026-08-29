@@ -568,7 +568,8 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
         // accumulators, summed at the end rather than XORed together.
         let mut spilled_sum: Vec<WordRef<B, W, 1>> = (0..2 * N).map(|_| zero()).collect();
         let mut spilled_carry: Vec<WordRef<B, W, 1>> = (0..2 * N).map(|_| zero()).collect();
-        // Carry-save accumulator: the pending contribution at the current position is `sum + 2·c`.
+        // Carry-save accumulator: the pending contribution at the current position is `sum + c`.
+        // (Not `sum + 2·c` — `c` holds `majority >> 1`, so that shift has absorbed the factor of two.)
         let mut sum: Vec<WordRef<B, W, 1>> = Vec::new();
         let mut c: Vec<WordRef<B, W, 1>> = Vec::new();
         for i in 0..width.saturating_sub(1) {
@@ -582,7 +583,7 @@ impl<B: Backend, W: Word, const N: usize> WordRef<B, W, N> {
                 .into_iter()
                 .map(|word| mask.clone().bitand(word))
                 .collect();
-            // 3:2 compression: sum + 2·c + row = sum' + 2·majority.
+            // 3:2 compression: sum + c + row = sum' + 2·majority, all three at the same scale.
             let next_sum: Vec<WordRef<B, W, 1>> = (0..limbs)
                 .map(|l| sum[l].clone().bitxor(c[l].clone()).bitxor(row[l].clone()))
                 .collect();
