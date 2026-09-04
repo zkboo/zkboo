@@ -7,7 +7,7 @@ mod options;
 pub mod replay;
 mod verifier;
 
-#[cfg(feature = "parallel")]
+#[cfg(feature = "rayon")]
 pub use functions::par_verify;
 pub use functions::verify;
 pub use options::VerifyOptions;
