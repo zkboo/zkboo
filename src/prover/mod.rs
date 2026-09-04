@@ -7,6 +7,6 @@ mod functions;
 pub mod proof;
 pub mod views;
 
-#[cfg(feature = "parallel")]
+#[cfg(feature = "rayon")]
 pub use functions::par_prove;
 pub use functions::prove;
