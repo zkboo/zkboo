@@ -67,6 +67,7 @@ macro_rules! _define_test_func {
         ::paste::paste! {
             fn $func(){
                 use zkboo::{
+                    executor::ExecOptions,
                     circuit::Circuit,
                     backend::{Backend, Frontend},
                     executor::{exec, OwnedFlexibleWordPool},
@@ -94,7 +95,7 @@ macro_rules! _define_test_func {
                         )*
                         // Test execution:
                         let circuit = TestCircuit {$($in: [<_ $in>],)* $($param_name,)*};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         $(
                             let $in = [<_ $in>];

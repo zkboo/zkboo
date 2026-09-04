@@ -17,6 +17,7 @@ use zkboo::{
     prover::{prove, views::OwnedFlexibleWordTriplePool},
     verifier::replay::{OwnedFlexibleWordPairPool, ViewReplayerBackend},
 };
+use zkboo::prover::proof::ProofOptions;
 
 /// Total bytes absorbed by every [CountingHasher] since the last reset.
 static HASHED_BYTES: AtomicUsize = AtomicUsize::new(0);
@@ -74,16 +75,17 @@ impl Circuit for HashLike {
 #[test]
 fn commitment_preimage_excludes_linear_wires() {
     let circuit = HashLike { a: 0xA5, b: 0x3C };
-    let proof = prove::<_, H, PS, PV, S, WTP>(&circuit, 1, b"seed", b"");
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, 1, b"seed", b"", ProofOptions::new());
     let response = &proof[0];
     HASHED_BYTES.store(0, Ordering::Relaxed);
     let frontend =
         ViewReplayerBackend::<CountingHasher, PV, S, WPP>::new(response).into_view_replayer();
     circuit.exec(&frontend);
     let hashed = HASHED_BYTES.load(Ordering::Relaxed);
-    // 2 seeds (32B each) + input shares + the AND-gate outputs; no linear-wire bytes.
+    // Per party: the framed domain tag (21 + 8), the seed (32), the input shares and the AND-gate
+    // outputs. No linear-wire bytes.
     assert_eq!(
-        hashed, 100,
+        hashed, 158,
         "commitment preimage size changed (was 2080 under all-wires hashing)"
     );
 }

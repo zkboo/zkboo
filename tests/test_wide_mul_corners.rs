@@ -21,6 +21,7 @@ use zkboo::{
 };
 
 use crate::common::proofs::test_proof;
+use zkboo::executor::ExecOptions;
 
 type WP = OwnedFlexibleWordPool<usize>;
 
@@ -91,7 +92,7 @@ fn check_wide_mul_corners<W: Word, const N: usize>() {
             let a = word_from_biguint::<W, N>(a_big);
             let b = word_from_biguint::<W, N>(b_big);
             let circuit = WideMul { a, b };
-            let outputs = exec::<_, WP>(&circuit);
+            let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
             let product = a_big * b_big;
             let lo = word_from_biguint::<W, N>(&(&product % &modulus));
             let hi = word_from_biguint::<W, N>(&(&product >> bit_width));

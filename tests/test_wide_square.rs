@@ -13,6 +13,7 @@ use zkboo::{
     executor::{OwnedFlexibleWordPool, exec},
     word::{CompositeWord, Word, Words},
 };
+use zkboo::executor::ExecOptions;
 
 type WP = OwnedFlexibleWordPool<usize>;
 
@@ -39,7 +40,7 @@ fn ok() -> Words {
 
 fn check<W: Word, const N: usize>(a: CompositeWord<W, N>) {
     assert_eq!(
-        exec::<_, WP>(&SquareEqMul { a }),
+        exec::<_, WP, _>(&SquareEqMul { a }, ExecOptions::new()),
         ok(),
         "wide_square disagrees with wide_mul for {a:?}"
     );

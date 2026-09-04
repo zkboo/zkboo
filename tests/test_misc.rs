@@ -6,6 +6,7 @@ use crate::common::test_all_words::{
     test_on_all_composites, test_on_all_words, test_on_all_words_and_composites,
 };
 use core::array;
+use zkboo::executor::ExecOptions;
 
 const NUM_SAMPLES: usize = 100;
 
@@ -50,7 +51,7 @@ macro_rules! test_into_le_words {
                         // Test execution:
                         let in_ = iter_in_.next().unwrap();
                         let circuit = TestCircuit {in_};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         let out_array = in_.to_word().to_le_words();
                         let mut expected_outputs = Words::new();
@@ -116,7 +117,7 @@ macro_rules! test_from_le_words {
                         });
                         // Test execution:
                         let circuit = TestCircuit {in_array};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         let out = $U::from_le_words(in_array);
                         let mut expected_outputs = Words::new();
@@ -176,7 +177,7 @@ macro_rules! test_into_le_bytes {
                         let in_ = iter_in_.next().unwrap();
                         // Test execution:
                         let circuit = TestCircuit {in_};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         let out_vec = in_.to_word().to_le_bytes();
                         let mut expected_outputs = Words::new();
@@ -237,7 +238,7 @@ macro_rules! test_into_be_bytes {
                         let in_ = iter_in_.next().unwrap();
                         // Test execution:
                         let circuit = TestCircuit {in_};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         let out_vec = in_.to_word().to_be_bytes();
                         let mut expected_outputs = Words::new();
@@ -297,7 +298,7 @@ macro_rules! test_from_le_bytes {
                         let in_vec = iter_in_.next().unwrap().to_le_bytes().to_vec();
                         // Test execution:
                         let circuit = TestCircuit {in_array: in_vec.clone()};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         let out = $U::from_le_bytes(in_vec.try_into().unwrap());
                         let mut expected_outputs = Words::new();
@@ -357,7 +358,7 @@ macro_rules! test_from_be_bytes {
                         let in_vec = iter_in_.next().unwrap().to_le_bytes().to_vec();
                         // Test execution:
                         let circuit = TestCircuit {in_array: in_vec.clone()};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         let out = $U::from_be_bytes(in_vec.try_into().unwrap());
                         let mut expected_outputs = Words::new();
@@ -418,7 +419,7 @@ macro_rules! test_mask {
                         // Test execution:
                         let in_ = iter_in_.next().unwrap();
                         let circuit = TestCircuit {in_};
-                        let outputs = exec::<_, WP>(&circuit);
+                        let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                         // Reference execution:
                         let out = if in_ & 1u8 != 0 {$U::MAX} else {$U::ZERO};
                         let mut expected_outputs = Words::new();
@@ -477,7 +478,7 @@ macro_rules! test_cast_fixed_in_out {
                     // Test execution:
                     let in_ = iter_in_.next().unwrap();
                     let circuit = TestCircuit {in_};
-                    let outputs = exec::<_, WP>(&circuit);
+                    let outputs = exec::<_, WP, _>(&circuit, ExecOptions::new());
                     // Reference execution:
                     let out = in_.cast::<$T>();
                     let mut expected_outputs = Words::new();

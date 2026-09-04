@@ -5,11 +5,13 @@
 mod backend;
 // mod frontend;
 pub mod functions;
+mod options;
 mod word_pool;
 
 pub use backend::ExecutionBackend;
 // pub use frontend::Executor;
-pub use functions::{exec, exec_hooked};
+pub use functions::exec;
+pub use options::ExecOptions;
 pub use word_pool::{
     GlobalFlexibleWordPool, GlobalWordSource, OwnedFlexibleWordPool, WordPool, WordPoolWrapper,
     WordSource, WordSourceWrapper,

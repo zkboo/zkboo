@@ -5,45 +5,19 @@
 use crate::{
     backend::BackendHook,
     circuit::Circuit,
-    crypto::{TAG_CHALLENGE, absorb_framed, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{Hasher, PseudoRandomGenerator, Seed},
     prover::proof::Proof,
     verifier::{
-        Verifier,
+        Verifier, VerifyOptions,
         replay::{ViewReplayError, WordPairPool},
     },
     word::Words,
 };
+#[cfg(feature = "rayon")]
+use crate::crypto::{TAG_CHALLENGE, absorb_framed};
 
-/// Verifies a ZKBoo [Proof] for the given circuit and expected output.
-///
-/// Returns [ViewReplayError] if the shape of the expected output does not match the shape
-/// of the outputs produced during a replay, or if the AND messages have not all been consumed.
-pub fn verify<C: Circuit, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>(
-    circuit: &C,
-    expected_output: &Words,
-    proof: &Proof<H::Digest, S>,
-    binding: &[u8],
-) -> Result<bool, ViewReplayError> {
-    let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
-    for response in proof {
-        // Reject a structurally malformed (untrusted) response before replaying it.
-        if !response.is_well_formed() {
-            return Ok(false);
-        }
-        let iter = verifier.next_iter(response);
-        circuit.exec(iter.view_replayer());
-        iter.finalize()?;
-    }
-    return Ok(verifier.finalize());
-}
-
-/// Variant of [verify] that wraps each iteration's view replayer backend with a per-operation
-/// [BackendHook], built fresh per iteration from `hook_init_arg`.
-///
-/// The hook fires around every backend operation — the linear ops (XOR, shifts, rotates) included —
-/// so an on-device verifier can service a platform watchdog at per-operation granularity, or a
-/// benchmark can count operations. With `BH = NoHook` this is byte-identical to [verify].
-pub fn verify_hooked<
+/// Verifies a ZKBoo [Proof] against the given circuit and expected output.
+pub fn verify<
     C: Circuit,
     H: Hasher,
     PV: PseudoRandomGenerator,
@@ -55,7 +29,7 @@ pub fn verify_hooked<
     expected_output: &Words,
     proof: &Proof<H::Digest, S>,
     binding: &[u8],
-    hook_init_arg: BH::InitArg,
+    options: VerifyOptions<BH>,
 ) -> Result<bool, ViewReplayError> {
     let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
     for response in proof {
@@ -63,7 +37,7 @@ pub fn verify_hooked<
         if !response.is_well_formed() {
             return Ok(false);
         }
-        let iter = verifier.next_iter_hooked::<BH>(response, hook_init_arg);
+        let iter = verifier.next_iter_hooked::<BH>(response, options.hook_arg());
         circuit.exec(iter.view_replayer());
         iter.finalize()?;
     }

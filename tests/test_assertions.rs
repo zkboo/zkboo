@@ -17,6 +17,9 @@ use zkboo::{
     verifier::{replay::OwnedFlexibleWordPairPool, verify},
     word::{CompositeWord, Words},
 };
+use zkboo::executor::ExecOptions;
+use zkboo::prover::proof::ProofOptions;
+use zkboo::verifier::VerifyOptions;
 
 #[derive(Debug)]
 struct Blake3Hasher {
@@ -116,13 +119,13 @@ impl Circuit for Silent {
 
 #[test]
 fn an_empty_accumulator_yields_the_constant_one() {
-    assert_eq!(exec::<_, WP>(&Silent), flag(1));
+    assert_eq!(exec::<_, WP, _>(&Silent, ExecOptions::new()), flag(1));
 }
 
 #[test]
 fn a_satisfied_assertion_yields_one() {
     assert_eq!(
-        exec::<_, WP>(&Asserts::new(Word4::ONE, Word4::ONE, 1)),
+        exec::<_, WP, _>(&Asserts::new(Word4::ONE, Word4::ONE, 1), ExecOptions::new()),
         flag(1)
     );
 }
@@ -130,7 +133,7 @@ fn a_satisfied_assertion_yields_one() {
 #[test]
 fn a_violated_assertion_yields_zero() {
     assert_eq!(
-        exec::<_, WP>(&Asserts::new(Word4::ONE, Word4::MAX, 1)),
+        exec::<_, WP, _>(&Asserts::new(Word4::ONE, Word4::MAX, 1), ExecOptions::new()),
         flag(0)
     );
 }
@@ -141,7 +144,7 @@ fn violations_accumulate_by_conjunction_and_never_cancel() {
     // circuit would claim to be sound.
     for times in [2, 3, 4] {
         assert_eq!(
-            exec::<_, WP>(&Asserts::new(Word4::ONE, Word4::MAX, times)),
+            exec::<_, WP, _>(&Asserts::new(Word4::ONE, Word4::MAX, times), ExecOptions::new()),
             flag(0),
             "{times} violated assertions did not accumulate to a violation"
         );
@@ -161,7 +164,7 @@ fn one_violation_among_many_satisfied_assertions_still_shows() {
             asserts.output(fe);
         }
     }
-    assert_eq!(exec::<_, WP>(&MostlyFine), flag(0));
+    assert_eq!(exec::<_, WP, _>(&MostlyFine, ExecOptions::new()), flag(0));
 }
 
 #[test]
@@ -171,7 +174,7 @@ fn the_postfix_form_accumulates_exactly_as_the_method_does() {
         let mut postfix = Asserts::new(value, expected, 3);
         method.postfix = false;
         postfix.postfix = true;
-        assert_eq!(exec::<_, WP>(&method), exec::<_, WP>(&postfix));
+        assert_eq!(exec::<_, WP, _>(&method, ExecOptions::new()), exec::<_, WP, _>(&postfix, ExecOptions::new()));
     }
 }
 
@@ -188,16 +191,16 @@ fn an_accumulator_reports_whether_anything_has_been_asserted() {
             asserts.output(fe);
         }
     }
-    assert_eq!(exec::<_, WP>(&Reports), flag(1));
+    assert_eq!(exec::<_, WP, _>(&Reports, ExecOptions::new()), flag(1));
 }
 
 #[test]
 fn a_satisfied_assertion_proves_and_verifies() {
     let circuit = Asserts::new(Word4::MAX, Word4::MAX, 2);
-    let statement = exec::<_, WP>(&circuit);
+    let statement = exec::<_, WP, _>(&circuit, ExecOptions::new());
     assert_eq!(statement, flag(1));
-    let proof = prove::<_, H, PS, PV, S, WTP>(&circuit, NUM_ITERS, SEED_ENTROPY, BINDING);
-    let is_valid = verify::<_, H, PV, S, WPP>(&circuit, &statement, &proof, BINDING)
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
+    let is_valid = verify::<_, H, PV, S, WPP, _>(&circuit, &statement, &proof, BINDING, VerifyOptions::new())
         .expect("error verifying the asserting proof");
     assert!(is_valid, "a proof of a satisfied assertion failed to verify");
 }
@@ -207,9 +210,9 @@ fn a_violated_assertion_cannot_be_proved_satisfied() {
     // The prover runs a circuit whose assertion does not hold; the verifier expects the flag to be
     // `1`, which is what any honest statement of this circuit says.
     let circuit = Asserts::new(Word4::ONE, Word4::MAX, 1);
-    assert_eq!(exec::<_, WP>(&circuit), flag(0));
-    let proof = prove::<_, H, PS, PV, S, WTP>(&circuit, NUM_ITERS, SEED_ENTROPY, BINDING);
-    let is_valid = verify::<_, H, PV, S, WPP>(&circuit, &flag(1), &proof, BINDING)
+    assert_eq!(exec::<_, WP, _>(&circuit, ExecOptions::new()), flag(0));
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
+    let is_valid = verify::<_, H, PV, S, WPP, _>(&circuit, &flag(1), &proof, BINDING, VerifyOptions::new())
         .expect("error verifying the violated proof");
     assert!(!is_valid, "a violated assertion verified as satisfied");
 }
@@ -218,8 +221,8 @@ fn a_violated_assertion_cannot_be_proved_satisfied() {
 fn a_circuit_that_asserts_nothing_costs_no_gate_for_its_flag() {
     // The flag of an assertion-free circuit is a constant, so proving one is exactly as cheap as
     // proving the same circuit without the flag: the constant costs no AND message.
-    let proof = prove::<_, H, PS, PV, S, WTP>(&Silent, NUM_ITERS, SEED_ENTROPY, BINDING);
-    let is_valid = verify::<_, H, PV, S, WPP>(&Silent, &flag(1), &proof, BINDING)
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&Silent, NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
+    let is_valid = verify::<_, H, PV, S, WPP, _>(&Silent, &flag(1), &proof, BINDING, VerifyOptions::new())
         .expect("error verifying the silent proof");
     assert!(is_valid, "a circuit that asserts nothing failed to verify");
 }

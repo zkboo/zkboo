@@ -118,10 +118,7 @@ pub struct VerifyingIteration<
 impl<'a, 'b, 'c, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool, BH: BackendHook>
     VerifyingIteration<'a, 'b, 'c, H, PV, S, WPP, BH>
 {
-    /// Returns a [Frontend] which can be used to replay the view corresponding to this iteration.
-    ///
-    /// To reach the replayer's recording accessors through the hook wrapper, use
-    /// `with_backend(|h| h.inner()...)` (see [Hooked::inner]).
+    /// The [Frontend] replaying this iteration's view.
     pub fn view_replayer(&self) -> &Frontend<Hooked<BH, ViewReplayerBackend<'b, H, PV, S, WPP>>> {
         return &self.view_replayer;
     }

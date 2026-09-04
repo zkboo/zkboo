@@ -15,6 +15,7 @@ use zkboo::{
     executor::{exec, OwnedFlexibleWordPool},
     word::{CompositeWord, Word, Words},
 };
+use zkboo::executor::ExecOptions;
 
 type WP = OwnedFlexibleWordPool<usize>;
 
@@ -36,7 +37,7 @@ impl<W: Word, const N: usize> Circuit for ConstMul<W, N> {
 
 /// Asserts the circuit constant-multiplications agree with the native variable-multiplications.
 fn check<W: Word, const N: usize>(a: CompositeWord<W, N>, k: CompositeWord<W, N>) {
-    let outputs = exec::<_, WP>(&ConstMul { a, k });
+    let outputs = exec::<_, WP, _>(&ConstMul { a, k }, ExecOptions::new());
 
     let (lo, hi) = a.wide_mul(k);
     let low = a.wrapping_mul(k);

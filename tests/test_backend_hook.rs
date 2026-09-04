@@ -19,13 +19,15 @@ use zkboo::{
     backend::{Backend, BackendHook, Frontend, NoHook},
     circuit::Circuit,
     crypto::{HashPRG, Hasher},
-    executor::{OwnedFlexibleWordPool, exec, exec_hooked},
+    executor::{OwnedFlexibleWordPool, exec},
     prover::{
-        challenge::build_challenge_entropy,
-        proof::{build_proof, build_proof_hooked},
+        challenge::{ChallengeOptions, build_challenge_entropy},
+        proof::{ProofOptions, build_proof},
     },
-    verifier::{replay::OwnedFlexibleWordPairPool, verify, verify_hooked},
+    verifier::{replay::OwnedFlexibleWordPairPool, verify},
 };
+use zkboo::executor::ExecOptions;
+use zkboo::verifier::VerifyOptions;
 
 // --- A minimal Blake3-backed hasher (mirrors tests/test_challenge_collector.rs). -----------------
 
@@ -120,11 +122,12 @@ const NUM_ITERS: usize = 8;
 /// `build_challenge_entropy` is deterministic in its inputs, so each call reproduces the exact
 /// entropy a prove needs (the returned value is consumed by `build_proof*`).
 fn challenge_entropy(circuit: &MixedCircuit) -> zeroize::Zeroizing<std::vec::Vec<u8>> {
-    return build_challenge_entropy::<MixedCircuit, H, PS, PV, S, WTP>(
+    return build_challenge_entropy::<MixedCircuit, H, PS, PV, S, _, WTP, _>(
         circuit,
         SEED_ENTROPY,
         BINDING,
         NUM_ITERS,
+        ChallengeOptions::new(),
     );
 }
 
@@ -132,19 +135,21 @@ fn challenge_entropy(circuit: &MixedCircuit) -> zeroize::Zeroizing<std::vec::Vec
 fn nohook_wrapped_prove_is_byte_identical() {
     let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
 
-    let proof_plain = build_proof::<MixedCircuit, H, PS, PV, S, WTP>(
+    let proof_plain = build_proof::<MixedCircuit, H, PS, PV, S, _, WTP, _>(
         &circuit,
         SEED_ENTROPY,
         challenge_entropy(&circuit),
         NUM_ITERS,
+        ProofOptions::new(),
     );
 
-    let proof_nohook = build_proof_hooked::<MixedCircuit, H, PS, PV, S, WTP, NoHook>(
+    let proof_nohook = build_proof::<MixedCircuit, H, PS, PV, S, _, WTP, _>(
         &circuit,
         SEED_ENTROPY,
         challenge_entropy(&circuit),
         NUM_ITERS,
-        (),
+        ProofOptions::new().with_hook_arg::<NoHook>((),
+    ),
     );
 
     assert_eq!(
@@ -153,13 +158,11 @@ fn nohook_wrapped_prove_is_byte_identical() {
     );
 
     // And it still verifies, so the equality is not equality-of-two-broken-things.
-    let expected_output = exec::<MixedCircuit, WP>(&circuit);
-    let is_valid = verify::<MixedCircuit, H, PV, S, WPP>(
-        &circuit,
+    let expected_output = exec::<MixedCircuit, WP, _>(&circuit, ExecOptions::new());
+    let is_valid = verify::<MixedCircuit, H, PV, S, WPP, _>(&circuit,
         &expected_output,
         &proof_nohook,
-        BINDING,
-    )
+        BINDING, VerifyOptions::new())
     .expect("verification errored");
     assert!(is_valid, "NoHook-wrapped proof did not verify");
 }
@@ -168,20 +171,21 @@ fn nohook_wrapped_prove_is_byte_identical() {
 fn observing_hook_fires_yet_is_transcript_neutral() {
     let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
 
-    let proof_plain = build_proof::<MixedCircuit, H, PS, PV, S, WTP>(
+    let proof_plain = build_proof::<MixedCircuit, H, PS, PV, S, _, WTP, _>(
         &circuit,
         SEED_ENTROPY,
         challenge_entropy(&circuit),
         NUM_ITERS,
+        ProofOptions::new(),
     );
 
     let counter = Cell::new(0usize);
-    let proof_hooked = build_proof_hooked::<MixedCircuit, H, PS, PV, S, WTP, CountingHook>(
+    let proof_hooked = build_proof::<MixedCircuit, H, PS, PV, S, _, WTP, _>(
         &circuit,
         SEED_ENTROPY,
         challenge_entropy(&circuit),
         NUM_ITERS,
-        &counter,
+        ProofOptions::new().with_hook_arg::<CountingHook>(&counter),
     );
 
     // The hook ticked on the AND gate and the linear ops, across all iterations...
@@ -196,13 +200,11 @@ fn observing_hook_fires_yet_is_transcript_neutral() {
         "an observing hook perturbed the emitted proof"
     );
 
-    let expected_output = exec::<MixedCircuit, WP>(&circuit);
-    let is_valid = verify::<MixedCircuit, H, PV, S, WPP>(
-        &circuit,
+    let expected_output = exec::<MixedCircuit, WP, _>(&circuit, ExecOptions::new());
+    let is_valid = verify::<MixedCircuit, H, PV, S, WPP, _>(&circuit,
         &expected_output,
         &proof_hooked,
-        BINDING,
-    )
+        BINDING, VerifyOptions::new())
     .expect("verification errored");
     assert!(is_valid, "hooked proof did not verify");
 }
@@ -210,24 +212,26 @@ fn observing_hook_fires_yet_is_transcript_neutral() {
 #[test]
 fn nohook_verify_matches_plain_verify() {
     let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
-    let proof = build_proof::<MixedCircuit, H, PS, PV, S, WTP>(
+    let proof = build_proof::<MixedCircuit, H, PS, PV, S, _, WTP, _>(
         &circuit,
         SEED_ENTROPY,
         challenge_entropy(&circuit),
         NUM_ITERS,
+        ProofOptions::new(),
     );
-    let expected_output = exec::<MixedCircuit, WP>(&circuit);
+    let expected_output = exec::<MixedCircuit, WP, _>(&circuit, ExecOptions::new());
 
-    let plain = verify::<MixedCircuit, H, PV, S, WPP>(&circuit, &expected_output, &proof, BINDING)
+    let plain = verify::<MixedCircuit, H, PV, S, WPP, _>(&circuit, &expected_output, &proof, BINDING, VerifyOptions::new())
         .expect("verify errored");
-    let nohook = verify_hooked::<MixedCircuit, H, PV, S, WPP, NoHook>(
+    let nohook = verify::<MixedCircuit, H, PV, S, WPP, _>(
         &circuit,
         &expected_output,
         &proof,
         BINDING,
-        (),
+        VerifyOptions::new().with_hook_arg::<NoHook>((),
+    ),
     )
-    .expect("verify_hooked errored");
+    .expect("verify errored");
 
     assert!(plain, "plain verify rejected a valid proof");
     assert_eq!(plain, nohook, "NoHook-wrapped verify diverged from plain verify");
@@ -236,23 +240,24 @@ fn nohook_verify_matches_plain_verify() {
 #[test]
 fn observing_hook_on_verify_fires_yet_verifies() {
     let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
-    let proof = build_proof::<MixedCircuit, H, PS, PV, S, WTP>(
+    let proof = build_proof::<MixedCircuit, H, PS, PV, S, _, WTP, _>(
         &circuit,
         SEED_ENTROPY,
         challenge_entropy(&circuit),
         NUM_ITERS,
+        ProofOptions::new(),
     );
-    let expected_output = exec::<MixedCircuit, WP>(&circuit);
+    let expected_output = exec::<MixedCircuit, WP, _>(&circuit, ExecOptions::new());
 
     let counter = Cell::new(0usize);
-    let ok = verify_hooked::<MixedCircuit, H, PV, S, WPP, CountingHook>(
+    let ok = verify::<MixedCircuit, H, PV, S, WPP, _>(
         &circuit,
         &expected_output,
         &proof,
         BINDING,
-        &counter,
+        VerifyOptions::new().with_hook_arg::<CountingHook>(&counter),
     )
-    .expect("verify_hooked errored");
+    .expect("verify errored");
 
     // A correct verification result already implies the hooked replay reproduced the exact
     // transcript (otherwise the challenge sequence would mismatch and verify would return false)...
@@ -269,8 +274,8 @@ fn observing_hook_on_verify_fires_yet_verifies() {
 fn nohook_exec_is_byte_identical() {
     let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
 
-    let out_plain = exec::<MixedCircuit, WP>(&circuit);
-    let out_nohook = exec_hooked::<MixedCircuit, WP, NoHook>(&circuit, ());
+    let out_plain = exec::<MixedCircuit, WP, _>(&circuit, ExecOptions::new());
+    let out_nohook = exec::<MixedCircuit, WP, NoHook>(&circuit, ExecOptions::new().with_hook_arg::<NoHook>(()));
 
     assert_eq!(
         out_plain, out_nohook,
@@ -282,10 +287,10 @@ fn nohook_exec_is_byte_identical() {
 fn observing_hook_on_exec_fires_yet_is_output_neutral() {
     let circuit = MixedCircuit { a: 0b1100, b: 0b1010 };
 
-    let out_plain = exec::<MixedCircuit, WP>(&circuit);
+    let out_plain = exec::<MixedCircuit, WP, _>(&circuit, ExecOptions::new());
 
     let counter = Cell::new(0usize);
-    let out_hooked = exec_hooked::<MixedCircuit, WP, CountingHook>(&circuit, &counter);
+    let out_hooked = exec::<MixedCircuit, WP, CountingHook>(&circuit, ExecOptions::new().with_hook_arg::<CountingHook>(&counter));
 
     // The hook fired on the AND gate and the linear ops (one clear-text pass: at least 3 ticks)...
     assert!(

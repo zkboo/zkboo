@@ -3,22 +3,24 @@
 //! Functions for generating ZKBoo proofs.
 
 #[cfg(feature = "rayon")]
-use crate::prover::{challenge::par_build_challenge_entropy, proof::par_build_proof};
+use crate::prover::{
+    challenge::par_build_challenge_entropy,
+    proof::{Proof, par_build_proof},
+};
 use crate::{
+    backend::BackendHook,
     circuit::Circuit,
     crypto::{Hasher, PseudoRandomGenerator, Seed},
     prover::{
-        challenge::build_challenge_entropy,
-        proof::{Proof, build_proof, build_proof_custom, collectors::ResponseDataCollector},
-        views::WordTriplePool,
+        challenge::{ChallengeOptions, build_challenge_entropy},
+        proof::{ProofOptions, build_proof, collectors::ResponseDataCollector},
+        views::{WordTriplePool, collectors::ViewCommitmentsRelayer},
     },
 };
 use alloc::vec::Vec;
 
-/// Build a proof for the given circuit, using the given number of iterations and seed entropy,
-/// using a custom [ResponseDataCollector] implementation.
-/// Returns the finalized responses from the collector.
-pub fn prove_custom<
+/// Builds a proof of the given circuit, returning the finalisation result of every iteration.
+pub fn prove<
     C: Circuit,
     H: Hasher,
     PS: PseudoRandomGenerator,
@@ -26,45 +28,32 @@ pub fn prove_custom<
     S: Seed,
     RDC: ResponseDataCollector<H::Digest, S>,
     WTP: WordTriplePool,
+    BH: BackendHook,
 >(
     circuit: &C,
     num_iters: usize,
     seed_entropy: &[u8],
     binding: &[u8],
-    collector_init_arg: RDC::InitArg,
+    options: ProofOptions<H::Digest, S, RDC, BH>,
 ) -> Vec<RDC::FinalizeRes> {
-    let challenge_entropy =
-        build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, binding, num_iters);
-    return build_proof_custom::<C, H, PS, PV, S, RDC, WTP>(
+    let challenge_options =
+        ChallengeOptions::<H::Digest, S>::new().with_hook_arg::<BH>(options.hook_arg());
+    let challenge_entropy = build_challenge_entropy::<
+        C,
+        H,
+        PS,
+        PV,
+        S,
+        ViewCommitmentsRelayer<H::Digest, S>,
+        WTP,
+        BH,
+    >(circuit, seed_entropy, binding, num_iters, challenge_options);
+    return build_proof::<C, H, PS, PV, S, RDC, WTP, BH>(
         circuit,
         seed_entropy,
         challenge_entropy,
         num_iters,
-        collector_init_arg,
-    );
-}
-
-/// Build a proof for the given circuit, using the given number of iterations and seed entropy.
-pub fn prove<
-    C: Circuit,
-    H: Hasher,
-    PS: PseudoRandomGenerator,
-    PV: PseudoRandomGenerator,
-    S: Seed,
-    WTP: WordTriplePool,
->(
-    circuit: &C,
-    num_iters: usize,
-    seed_entropy: &[u8],
-    binding: &[u8],
-) -> Proof<H::Digest, S> {
-    let challenge_entropy =
-        build_challenge_entropy::<C, H, PS, PV, S, WTP>(circuit, seed_entropy, binding, num_iters);
-    return build_proof::<C, H, PS, PV, S, WTP>(
-        circuit,
-        seed_entropy,
-        challenge_entropy,
-        num_iters,
+        options,
     );
 }
 
