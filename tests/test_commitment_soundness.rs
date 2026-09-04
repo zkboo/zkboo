@@ -6,12 +6,14 @@
 //! share must be rejected. The all-challenges test asserts every 2-of-3 opening pattern is exercised,
 //! since each lays out the input-share and nonlinear-traffic hashing over a different slot mapping.
 
-#![cfg(feature = "keccak")]
+#[path = "common/hasher.rs"]
+mod hasher;
+use hasher::Blake3Hasher;
 
 use zkboo::{
     backend::{Backend, Frontend},
     circuit::Circuit,
-    crypto::{HashPRG, Hasher, Keccak256Hasher},
+    crypto::{HashPRG, Hasher},
     executor::{OwnedFlexibleWordPool, exec},
     prover::{proof::Proof, proof::Response, prove, views::OwnedFlexibleWordTriplePool},
     verifier::{replay::OwnedFlexibleWordPairPool, verify},
@@ -21,7 +23,7 @@ use zkboo::executor::ExecOptions;
 use zkboo::prover::proof::ProofOptions;
 use zkboo::verifier::VerifyOptions;
 
-type H = Keccak256Hasher;
+type H = Blake3Hasher;
 type PS = HashPRG<H>;
 type PV = HashPRG<H>;
 type S = <H as Hasher>::Digest;
