@@ -7,7 +7,7 @@ use crate::{
     crypto::{GeneratesRandom, HashPRG, Hasher, PseudoRandomGenerator, Seed},
     prover::{
         challenge::{ChallengeGenerator, Party},
-        proof::collectors::ResponseDataCollector,
+        proof::{ProofOptions, collectors::ResponseDataCollector},
         views::{ViewBuilderBackend, WordTriplePool, collectors::ResponseDataSelector},
     },
     word::Shape,
@@ -48,119 +48,18 @@ impl<
     PS: PseudoRandomGenerator,
     PV: PseudoRandomGenerator,
     S: Seed,
-    RDC: ResponseDataCollector<H::Digest, S, InitArg: Default>,
-    WTP: WordTriplePool,
-> ProofBuilder<H, PS, PV, S, RDC, WTP, NoHook>
-{
-    /// Creates a new proof builder with the given seed entropy, challenge entropy,
-    /// and number of iterations (i.e. number of responses in the proof).
-    ///
-    /// The [ResponseDataCollector] is initialized with its default argument.
-    pub fn new(
-        seed_entropy: &[u8],
-        challenge_entropy: Zeroizing<Vec<u8>>,
-        num_iters: usize,
-    ) -> Self {
-        return ProofBuilder {
-            seed_prg: PS::new(seed_entropy),
-            challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
-            num_iters,
-            num_iters_yielded: 0,
-            num_iters_skipped: 0,
-            collector_init_arg: Default::default(),
-            hook_init_arg: (),
-            capacity_hint: Shape::zero(),
-            _marker: core::marker::PhantomData,
-        };
-    }
-}
-
-impl<
-    H: Hasher,
-    PS: PseudoRandomGenerator,
-    PV: PseudoRandomGenerator,
-    S: Seed,
-    RDC: ResponseDataCollector<H::Digest, S>,
-    WTP: WordTriplePool,
-> ProofBuilder<H, PS, PV, S, RDC, WTP, NoHook>
-{
-    /// Variant of [ProofBuilder::new] accepting a custom initialization argument for the
-    /// [ResponseDataCollector].
-    pub fn new_with_arg(
-        seed_entropy: &[u8],
-        challenge_entropy: Zeroizing<Vec<u8>>,
-        num_iters: usize,
-        collector_init_arg: RDC::InitArg,
-    ) -> Self {
-        return ProofBuilder {
-            seed_prg: PS::new(seed_entropy),
-            challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
-            num_iters,
-            num_iters_yielded: 0,
-            num_iters_skipped: 0,
-            collector_init_arg,
-            hook_init_arg: (),
-            capacity_hint: Shape::zero(),
-            _marker: core::marker::PhantomData,
-        };
-    }
-
-    /// Variant of [ProofBuilder::new_with_arg] that additionally reserves internal state-pool
-    /// capacity for the given peak state shape (e.g. obtained from a profiling pre-pass over the
-    /// circuit).
-    ///
-    /// Each iteration's view builder pool is reserved exactly to `capacity` before execution, so
-    /// its heap sits at the true high-water mark instead of the next power of two above it. This
-    /// changes only the pools' allocated capacity, never the produced responses: with an accurate
-    /// (or larger) `capacity` the proof is byte-identical to [ProofBuilder::new_with_arg]. Passing
-    /// [Shape::zero] recovers the unreserved behaviour exactly.
-    pub fn new_with_arg_reserved(
-        seed_entropy: &[u8],
-        challenge_entropy: Zeroizing<Vec<u8>>,
-        num_iters: usize,
-        collector_init_arg: RDC::InitArg,
-        capacity: Shape,
-    ) -> Self {
-        return ProofBuilder {
-            seed_prg: PS::new(seed_entropy),
-            challenge_generator: ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy)),
-            num_iters,
-            num_iters_yielded: 0,
-            num_iters_skipped: 0,
-            collector_init_arg,
-            hook_init_arg: (),
-            capacity_hint: capacity,
-            _marker: core::marker::PhantomData,
-        };
-    }
-}
-
-impl<
-    H: Hasher,
-    PS: PseudoRandomGenerator,
-    PV: PseudoRandomGenerator,
-    S: Seed,
     RDC: ResponseDataCollector<H::Digest, S>,
     WTP: WordTriplePool,
     BH: BackendHook,
 > ProofBuilder<H, PS, PV, S, RDC, WTP, BH>
 {
-    /// Variant of [ProofBuilder::new_with_arg] additionally accepting an init argument for a
-    /// per-operation [BackendHook] that wraps each iteration's view builder backend.
-    ///
-    /// A fresh hook is built per iteration via [BackendHook::new] from `hook_init_arg`, firing
-    /// around every backend operation — the linear ops (XOR, shifts, rotates) included — so it can
-    /// service a platform watchdog at per-operation granularity during the proof pass, not just on
-    /// the AND-message seam. With the default [NoHook] this is byte-identical to the unhooked path.
-    ///
-    /// ⚠️ The hook must not re-enter the backend (operations run inside the [Frontend]'s borrow); it
-    /// should touch only its own state.
-    pub fn new_with_arg_hooked(
+    /// Creates a proof builder from the given seed entropy, challenge entropy, number of iterations
+    /// and options.
+    pub fn new(
         seed_entropy: &[u8],
         challenge_entropy: Zeroizing<Vec<u8>>,
         num_iters: usize,
-        collector_init_arg: RDC::InitArg,
-        hook_init_arg: BH::InitArg,
+        options: ProofOptions<H::Digest, S, RDC, BH>,
     ) -> Self {
         return ProofBuilder {
             seed_prg: PS::new(seed_entropy),
@@ -168,9 +67,9 @@ impl<
             num_iters,
             num_iters_yielded: 0,
             num_iters_skipped: 0,
-            collector_init_arg,
-            hook_init_arg,
-            capacity_hint: Shape::zero(),
+            capacity_hint: options.capacity().clone(),
+            collector_init_arg: options.collector_arg(),
+            hook_init_arg: options.hook_arg(),
             _marker: core::marker::PhantomData,
         };
     }

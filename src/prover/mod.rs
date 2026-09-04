@@ -9,4 +9,4 @@ pub mod views;
 
 #[cfg(feature = "parallel")]
 pub use functions::par_prove;
-pub use functions::{prove, prove_custom};
+pub use functions::prove;

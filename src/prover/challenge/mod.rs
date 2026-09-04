@@ -5,9 +5,11 @@
 mod builder;
 mod challenge;
 mod functions;
+mod options;
 
 pub use builder::ChallengeBuilder;
 pub use challenge::{ChallengeGenerator, Party, PartyVec};
-pub use functions::{build_challenge_entropy, build_challenge_entropy_custom};
+pub use functions::build_challenge_entropy;
+pub use options::ChallengeOptions;
 #[cfg(feature = "rayon")]
 pub use functions::par_build_challenge_entropy;

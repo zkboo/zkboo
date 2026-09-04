@@ -15,6 +15,7 @@ use zkboo::{
     crypto::{HashPRG, Hasher, Keccak256Hasher},
     prover::{proof::Proof, prove, views::OwnedFlexibleWordTriplePool},
 };
+use zkboo::prover::proof::ProofOptions;
 
 type H = Keccak256Hasher;
 type PS = HashPRG<H>;
@@ -27,10 +28,10 @@ const BINDING: &[u8] = b"proof format pin";
 const NUM_ITERS: usize = 9;
 
 /// The proof format this pin was taken under.
-const PINNED_VERSION: u32 = 2;
+const PINNED_VERSION: u32 = 3;
 
 /// Keccak-256 of the concatenated response bytes of the pinned proof.
-const PINNED_DIGEST: &str = "4c952b2b8a78ce273f62f8ef6530160d9112fd1903feab99fc6f66942d183dff";
+const PINNED_DIGEST: &str = "51b10fb29979c774e547feaa60212d2efabc02f4b4c1e37388e5022e4d7a8b43";
 
 /// Mixes both nonlinear gate kinds and two word widths, so the pinned bytes cover the response
 /// layout of AND messages, carries, and input shares across word types.
@@ -70,7 +71,7 @@ fn proof_bytes_match_the_pinned_format() {
         b: 0x9ABC_DEF0,
         c: 0x5A,
     };
-    let proof = prove::<_, H, PS, PV, S, WTP>(&circuit, NUM_ITERS, SEED_ENTROPY, BINDING);
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
     assert_eq!(
         proof_digest(&proof),
         PINNED_DIGEST,

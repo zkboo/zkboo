@@ -5,13 +5,12 @@
 mod builder;
 pub mod collectors;
 mod functions;
+mod options;
 mod response;
 
 pub use builder::ProofBuilder;
 #[cfg(feature = "rayon")]
 pub use functions::par_build_proof;
-pub use functions::{
-    build_proof, build_proof_custom, build_proof_custom_hooked, build_proof_custom_reserved,
-    build_proof_hooked,
-};
+pub use functions::build_proof;
+pub use options::ProofOptions;
 pub use response::{PROOF_FORMAT_VERSION, Proof, Response};

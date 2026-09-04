@@ -22,6 +22,9 @@ use zkboo::{
     verifier::{replay::OwnedFlexibleWordPairPool, verify},
     word::{CompositeWord, Words},
 };
+use zkboo::executor::ExecOptions;
+use zkboo::prover::proof::ProofOptions;
+use zkboo::verifier::VerifyOptions;
 
 #[derive(Debug)]
 struct Blake3Hasher {
@@ -136,7 +139,7 @@ impl Circuit for AdvisedAnd {
 #[test]
 fn honest_advice_satisfies_the_assertion() {
     assert_eq!(
-        exec::<_, WP>(&AdvisedAnd::honest(Word4::MAX, Word4::ONE)),
+        exec::<_, WP, _>(&AdvisedAnd::honest(Word4::MAX, Word4::ONE), ExecOptions::new()),
         flag(1)
     );
 }
@@ -144,7 +147,7 @@ fn honest_advice_satisfies_the_assertion() {
 #[test]
 fn dishonest_advice_violates_the_assertion() {
     assert_eq!(
-        exec::<_, WP>(&AdvisedAnd::dishonest(Word4::MAX, Word4::ONE)),
+        exec::<_, WP, _>(&AdvisedAnd::dishonest(Word4::MAX, Word4::ONE), ExecOptions::new()),
         flag(0)
     );
 }
@@ -152,14 +155,13 @@ fn dishonest_advice_violates_the_assertion() {
 #[test]
 fn a_dishonest_prover_cannot_pass_its_advice_off_as_honest() {
     let dishonest = AdvisedAnd::dishonest(Word4::MAX, Word4::ONE);
-    let proof = prove::<_, H, PS, PV, S, WTP>(&dishonest, NUM_ITERS, SEED_ENTROPY, BINDING);
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&dishonest, NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
     // The verifier runs the circuit and expects the flag an honest statement carries.
-    let is_valid = verify::<_, H, PV, S, WPP>(
+    let is_valid = verify::<_, H, PV, S, WPP, _>(
         &AdvisedAnd::without_values(),
         &flag(1),
         &proof,
-        BINDING,
-    )
+        BINDING, VerifyOptions::new())
     .expect("error verifying the dishonest proof");
     assert!(!is_valid, "dishonest advice passed an assertion");
 }
@@ -169,13 +171,12 @@ fn the_verifier_needs_the_shape_of_the_advice_and_never_its_value() {
     // This is what makes advice-as-input work: the verifier constructs the same circuit with the
     // advice slot empty, because a replay discards every input value it is given.
     let honest = AdvisedAnd::honest(Word4::MAX, Word4::ONE);
-    let proof = prove::<_, H, PS, PV, S, WTP>(&honest, NUM_ITERS, SEED_ENTROPY, BINDING);
-    let is_valid = verify::<_, H, PV, S, WPP>(
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&honest, NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
+    let is_valid = verify::<_, H, PV, S, WPP, _>(
         &AdvisedAnd::without_values(),
         &flag(1),
         &proof,
-        BINDING,
-    )
+        BINDING, VerifyOptions::new())
     .expect("error verifying the honest proof");
     assert!(
         is_valid,
@@ -194,14 +195,14 @@ fn advice_without_an_assertion_constrains_nothing() {
     let mut lying = AdvisedAnd::dishonest(Word4::MAX, Word4::ONE);
     lying.unconstrained = true;
     assert_eq!(
-        exec::<_, WP>(&lying),
+        exec::<_, WP, _>(&lying, ExecOptions::new()),
         flag(1),
         "an unasserted circuit somehow noticed the advice was wrong"
     );
-    let proof = prove::<_, H, PS, PV, S, WTP>(&lying, NUM_ITERS, SEED_ENTROPY, BINDING);
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&lying, NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
     let mut verifier_view = AdvisedAnd::without_values();
     verifier_view.unconstrained = true;
-    let is_valid = verify::<_, H, PV, S, WPP>(&verifier_view, &flag(1), &proof, BINDING)
+    let is_valid = verify::<_, H, PV, S, WPP, _>(&verifier_view, &flag(1), &proof, BINDING, VerifyOptions::new())
         .expect("error verifying the unconstrained proof");
     assert!(
         is_valid,
