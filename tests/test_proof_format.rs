@@ -6,18 +6,22 @@
 //! The fix is deliberate: re-pin the digest here *and* bump [PROOF_FORMAT_VERSION], so that proofs
 //! and deterministically derived prover entropy never cross format versions silently.
 
-#![cfg(all(feature = "keccak", feature = "u32"))]
+#![cfg(feature = "u32")]
+
+#[path = "common/hasher.rs"]
+mod hasher;
+use hasher::Blake3Hasher;
 
 use zkboo::{
     PROOF_FORMAT_VERSION,
     backend::{Backend, Frontend},
     circuit::Circuit,
-    crypto::{HashPRG, Hasher, Keccak256Hasher},
+    crypto::{HashPRG, Hasher},
     prover::{proof::Proof, prove, views::OwnedFlexibleWordTriplePool},
 };
 use zkboo::prover::proof::ProofOptions;
 
-type H = Keccak256Hasher;
+type H = Blake3Hasher;
 type PS = HashPRG<H>;
 type PV = HashPRG<H>;
 type S = <H as Hasher>::Digest;
@@ -30,8 +34,8 @@ const NUM_ITERS: usize = 9;
 /// The proof format this pin was taken under.
 const PINNED_VERSION: u32 = 3;
 
-/// Keccak-256 of the concatenated response bytes of the pinned proof.
-const PINNED_DIGEST: &str = "51b10fb29979c774e547feaa60212d2efabc02f4b4c1e37388e5022e4d7a8b43";
+/// BLAKE3 of the concatenated response bytes of the pinned proof.
+const PINNED_DIGEST: &str = "4be5d4e64c11ba4d40e78977f68d45ad8bf01fe31aa27507e8ddca20223a7370";
 
 /// Mixes both nonlinear gate kinds and two word widths, so the pinned bytes cover the response
 /// layout of AND messages, carries, and input shares across word types.

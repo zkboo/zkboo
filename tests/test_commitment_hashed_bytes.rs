@@ -2,18 +2,21 @@
 
 //! Pins the size of the ZKB++ view-commitment preimage, guarding the perf win of not hashing linear
 //! wires. For a rotate/xor-heavy "hash-like" circuit (256 rounds, one AND every 16), the two opened
-//! parties' preimages total 100 bytes — the two seeds (32 each), the input shares, and only the AND
-//! outputs — versus 2080 bytes under the previous all-wires ZKBoo commitment (a 20.8x reduction).
+//! parties' preimages total 158 bytes — two domain-framed blocks over the two seeds (32 each), the
+//! input shares, and only the AND outputs — versus 2080 bytes under the previous all-wires ZKBoo
+//! commitment (a 13.2x reduction).
 //! A jump back up means a linear gate started hashing again.
 
-#![cfg(feature = "keccak")]
+#[path = "common/hasher.rs"]
+mod hasher;
+use hasher::Blake3Hasher;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
 use zeroize::Zeroize;
 use zkboo::{
     backend::{Backend, Frontend},
     circuit::Circuit,
-    crypto::{HashPRG, Hasher, Keccak256Hasher},
+    crypto::{HashPRG, Hasher},
     prover::{prove, views::OwnedFlexibleWordTriplePool},
     verifier::replay::{OwnedFlexibleWordPairPool, ViewReplayerBackend},
 };
@@ -22,16 +25,16 @@ use zkboo::prover::proof::ProofOptions;
 /// Total bytes absorbed by every [CountingHasher] since the last reset.
 static HASHED_BYTES: AtomicUsize = AtomicUsize::new(0);
 
-/// A [Keccak256Hasher] that additionally counts the bytes it absorbs.
+/// A [Blake3Hasher] that additionally counts the bytes it absorbs.
 #[derive(Debug, Zeroize)]
-struct CountingHasher(Keccak256Hasher);
+struct CountingHasher(Blake3Hasher);
 
 impl Hasher for CountingHasher {
-    const DIGEST_SIZE: usize = Keccak256Hasher::DIGEST_SIZE;
-    type Digest = <Keccak256Hasher as Hasher>::Digest;
+    const DIGEST_SIZE: usize = Blake3Hasher::DIGEST_SIZE;
+    type Digest = <Blake3Hasher as Hasher>::Digest;
 
     fn new() -> Self {
-        return CountingHasher(Keccak256Hasher::new());
+        return CountingHasher(Blake3Hasher::new());
     }
 
     fn update(&mut self, data: &[u8]) {
@@ -44,7 +47,7 @@ impl Hasher for CountingHasher {
     }
 }
 
-type H = Keccak256Hasher;
+type H = Blake3Hasher;
 type PS = HashPRG<H>;
 type PV = HashPRG<H>;
 type S = <H as Hasher>::Digest;

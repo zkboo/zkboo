@@ -6,13 +6,15 @@
 //! `0..num_iters`, concatenated in order, must be byte-identical to the unranged proof over the
 //! same entropy — and must verify as that proof.
 
-#![cfg(feature = "keccak")]
+#[path = "common/hasher.rs"]
+mod hasher;
+use hasher::Blake3Hasher;
 
 use zeroize::Zeroizing;
 use zkboo::{
     backend::{Backend, Frontend},
     circuit::Circuit,
-    crypto::{HashPRG, Hasher, Keccak256Hasher},
+    crypto::{HashPRG, Hasher},
     executor::{OwnedFlexibleWordPool, exec},
     prover::{
         challenge::build_challenge_entropy,
@@ -28,7 +30,7 @@ use zkboo::prover::proof::ProofOptions;
 use zkboo::verifier::VerifyOptions;
 use zkboo::prover::challenge::ChallengeOptions;
 
-type H = Keccak256Hasher;
+type H = Blake3Hasher;
 type PS = HashPRG<H>;
 type PV = HashPRG<H>;
 type S = <H as Hasher>::Digest;
