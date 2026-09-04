@@ -2,7 +2,8 @@
 
 //! The fast carry path of [Word], against a bit-serial reference.
 
-use zkboo::word::{CompositeWord, Word, WordLike};
+use zkboo::word::Word;
+
 /// The bit-serial recurrence, as the reference the fast path must reproduce.
 fn carry_reference<W: Word>(p: W, g: W, c: bool) -> (W, bool) {
     let mut carry = W::ZERO;
