@@ -12,7 +12,14 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Identity of the proof format: the layout of the response bytes emitted by the prover, together
 /// with the view-commitment scheme those bytes are checked against.
-pub const PROOF_FORMAT_VERSION: u32 = 3;
+///
+/// The value is the digest of a canonical reference proof, pinned by `tests/test_proof_format.rs`.
+/// Any change to the response layout or to the view-commitment preimages moves it, and the test
+/// that detects such a change can only be repaired by editing this constant.
+pub const PROOF_FORMAT_ID: [u8; 32] = [
+    0x4b, 0xe5, 0xd4, 0xe6, 0x4c, 0x11, 0xba, 0x4d, 0x40, 0xe7, 0x89, 0x77, 0xf6, 0x8d, 0x45, 0xad,
+    0x8b, 0xf0, 0x1f, 0xe3, 0x1a, 0xa2, 0x75, 0x07, 0xe8, 0xdd, 0xca, 0x20, 0x22, 0x3a, 0x73, 0x70,
+];
 
 /// ZKBoo response to a challenge, containing the necessary data to open two views.
 /// The challenge is stored implicitly into the variant.

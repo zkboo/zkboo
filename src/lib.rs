@@ -91,7 +91,7 @@
 //!   sub-range of a proof's responses, making long proofs resumable and splittable across provers.
 //!
 //! The format of the responses, together with the view-commitment scheme they are checked against,
-//! is identified by [PROOF_FORMAT_VERSION].
+//! is identified by [PROOF_FORMAT_ID].
 //!
 //! # Proof Verification
 //!
@@ -141,4 +141,4 @@ pub mod utils;
 pub mod verifier;
 pub mod word;
 
-pub use crate::prover::proof::PROOF_FORMAT_VERSION;
+pub use crate::prover::proof::PROOF_FORMAT_ID;

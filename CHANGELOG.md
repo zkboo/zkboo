@@ -4,6 +4,20 @@ All notable changes to this crate are documented in this file, starting at 1.2.0
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- The proof format is identified by `PROOF_FORMAT_ID`, the digest of a canonical reference proof, in place of the hand-maintained `PROOF_FORMAT_VERSION` counter.
+  A counter and a digest are two records of one fact that nothing keeps in agreement, and their disagreement is exactly how a format change once went unannounced.
+  The tripwire that pins the format can now only be repaired by editing the constant that consumers absorb, so re-pinning the bytes and announcing the change are the same edit.
+- The pin is taken under a hasher private to its test and frozen there.
+  Sharing a hasher with the rest of the suite let the pinned digest move for a reason unrelated to the format, which supplied a ready explanation for a change that had a second cause.
+
+### Removed
+
+- `PROOF_FORMAT_VERSION`, superseded by `PROOF_FORMAT_ID`.
+
 ## [1.2.0] — 2026-09-04
 
 ### Changed
