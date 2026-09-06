@@ -19,6 +19,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - The pin is taken under a hasher private to its test and frozen there.
   Sharing a hasher with the rest of the suite let the pinned digest move for a reason unrelated to the format, which supplied a ready explanation for a change that had a second cause.
 
+### Fixed
+
+- `ExecOptions` is `Copy` and `Clone` whatever the hook type.
+  A derived implementation asked the hook itself to be cloneable, when the only thing held is its initialisation argument, which a hook already has to make `Copy`.
+
 ### Removed
 
 - `PROOF_FORMAT_VERSION`, superseded by `PROOF_FORMAT_ID`.

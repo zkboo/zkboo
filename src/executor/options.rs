@@ -5,10 +5,20 @@
 use crate::backend::{BackendHook, NoHook};
 
 /// The optional arguments of a circuit execution.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ExecOptions<BH: BackendHook = NoHook> {
     hook_init_arg: BH::InitArg,
 }
+
+// Hand-rolled: a derive would require the hook itself to be [Clone]/[Copy], when the only thing
+// held is its init argument, which [BackendHook] already requires to be [Copy].
+impl<BH: BackendHook> Clone for ExecOptions<BH> {
+    fn clone(&self) -> Self {
+        return *self;
+    }
+}
+
+impl<BH: BackendHook> Copy for ExecOptions<BH> {}
 
 impl ExecOptions<NoHook> {
     /// Creates the default options.
