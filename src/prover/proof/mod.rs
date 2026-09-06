@@ -13,4 +13,4 @@ pub use builder::ProofBuilder;
 pub use functions::par_build_proof;
 pub use functions::build_proof;
 pub use options::ProofOptions;
-pub use response::{PROOF_FORMAT_VERSION, Proof, Response};
+pub use response::{PROOF_FORMAT_ID, Proof, Response};
