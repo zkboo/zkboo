@@ -99,14 +99,14 @@ impl AdvisedAnd {
 
 impl Circuit for AdvisedAnd {
     fn exec<B: Backend>(&self, fe: &Frontend<B>) {
-        let mut asserts = Assertions::new();
-        let a = fe.input(self.a);
-        let b = fe.input(self.b);
-        let advice = fe.input(self.advice);
-        if !self.unconstrained {
-            advice.eq(a & b).assert_into(&mut asserts);
-        }
-        asserts.output(fe);
+        Assertions::scope(fe, |asserts| {
+            let a = fe.input(self.a);
+            let b = fe.input(self.b);
+            let advice = fe.input(self.advice);
+            if !self.unconstrained {
+                advice.eq(a & b).assert_into(asserts);
+            }
+        });
     }
 }
 

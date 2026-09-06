@@ -12,9 +12,18 @@ pub struct Assertions<B: Backend> {
 }
 
 impl<B: Backend> Assertions<B> {
-    /// A fresh accumulator, with nothing asserted.
-    pub fn new() -> Self {
-        return Self { acc: None };
+    /// Runs the given body with an assertion accumulator, emitting its flag as the next output
+    /// word: `1` if every assertion held, `0` if any did not, and the constant `1` if nothing was
+    /// asserted at all.
+    pub fn scope<R>(frontend: &Frontend<B>, body: impl FnOnce(&mut Assertions<B>) -> R) -> R {
+        let mut assertions = Assertions { acc: None };
+        let result = body(&mut assertions);
+        let flag = match assertions.acc.take() {
+            Some(acc) => acc,
+            None => frontend.alloc(1u8),
+        };
+        frontend.output(flag);
+        return result;
     }
 
     /// Whether nothing has been asserted yet.
@@ -29,27 +38,6 @@ impl<B: Backend> Assertions<B> {
             None => condition,
             Some(previous) => previous & condition,
         });
-    }
-
-    /// The assertion flag: `1` if every assertion held, `0` if any did not, and the constant `1` if
-    /// nothing was asserted at all.
-    pub fn finish(self, frontend: &Frontend<B>) -> WordRef<B, u8, 1> {
-        return match self.acc {
-            Some(acc) => acc,
-            None => frontend.alloc(1u8),
-        };
-    }
-
-    /// Emits the assertion flag as the circuit's next output word.
-    pub fn output(self, frontend: &Frontend<B>) {
-        let flag = self.finish(frontend);
-        frontend.output(flag);
-    }
-}
-
-impl<B: Backend> Default for Assertions<B> {
-    fn default() -> Self {
-        return Assertions::new();
     }
 }
 

@@ -67,27 +67,37 @@ impl Asserts {
 
 impl Circuit for Asserts {
     fn exec<B: Backend>(&self, fe: &Frontend<B>) {
-        let mut asserts = Assertions::new();
-        let value = fe.input(self.value);
-        for _ in 0..self.times {
-            let condition = value.clone().eq_const(self.expected);
-            if self.postfix {
-                condition.assert_into(&mut asserts);
-            } else {
-                asserts.assert(condition);
+        Assertions::scope(fe, |asserts| {
+            let value = fe.input(self.value);
+            for _ in 0..self.times {
+                let condition = value.clone().eq_const(self.expected);
+                if self.postfix {
+                    condition.assert_into(asserts);
+                } else {
+                    asserts.assert(condition);
+                }
             }
-        }
-        asserts.output(fe);
+        });
     }
 }
 
-/// Outputs a flag without ever asserting anything.
+/// Opens a scope without ever asserting anything, so its flag is the constant `1`.
 struct Silent;
 
 impl Circuit for Silent {
     fn exec<B: Backend>(&self, fe: &Frontend<B>) {
         let _ = fe.input(Word4::ONE);
-        Assertions::new().output(fe);
+        Assertions::scope(fe, |_| {});
+    }
+}
+
+/// Outputs a value and opens no scope, so nothing appends a flag.
+struct NoScope;
+
+impl Circuit for NoScope {
+    fn exec<B: Backend>(&self, fe: &Frontend<B>) {
+        let value = fe.input(Word4::MAX);
+        fe.output(value);
     }
 }
 
@@ -130,12 +140,12 @@ fn one_violation_among_many_satisfied_assertions_still_shows() {
     struct MostlyFine;
     impl Circuit for MostlyFine {
         fn exec<B: Backend>(&self, fe: &Frontend<B>) {
-            let mut asserts = Assertions::new();
-            let value = fe.input(Word4::ONE);
-            asserts.assert(value.clone().eq_const(Word4::ONE));
-            asserts.assert(value.clone().eq_const(Word4::MAX));
-            asserts.assert(value.eq_const(Word4::ONE));
-            asserts.output(fe);
+            Assertions::scope(fe, |asserts| {
+                let value = fe.input(Word4::ONE);
+                asserts.assert(value.clone().eq_const(Word4::ONE));
+                asserts.assert(value.clone().eq_const(Word4::MAX));
+                asserts.assert(value.eq_const(Word4::ONE));
+            });
         }
     }
     assert_eq!(exec::<_, WP, _>(&MostlyFine, ExecOptions::new()), flag(0));
@@ -157,12 +167,12 @@ fn an_accumulator_reports_whether_anything_has_been_asserted() {
     struct Reports;
     impl Circuit for Reports {
         fn exec<B: Backend>(&self, fe: &Frontend<B>) {
-            let mut asserts = Assertions::new();
-            assert!(asserts.is_empty(), "a fresh accumulator is not empty");
-            let value = fe.input(Word4::ONE);
-            asserts.assert(value.eq_const(Word4::ONE));
-            assert!(!asserts.is_empty(), "an accumulator with an assertion is empty");
-            asserts.output(fe);
+            Assertions::scope(fe, |asserts| {
+                assert!(asserts.is_empty(), "a fresh accumulator is not empty");
+                let value = fe.input(Word4::ONE);
+                asserts.assert(value.eq_const(Word4::ONE));
+                assert!(!asserts.is_empty(), "an accumulator with an assertion is empty");
+            });
         }
     }
     assert_eq!(exec::<_, WP, _>(&Reports, ExecOptions::new()), flag(1));
@@ -199,4 +209,37 @@ fn a_circuit_that_asserts_nothing_costs_no_gate_for_its_flag() {
     let is_valid = verify::<_, H, PV, S, WPP, _>(&Silent, &flag(1), &proof, BINDING, VerifyOptions::new())
         .expect("error verifying the silent proof");
     assert!(is_valid, "a circuit that asserts nothing failed to verify");
+}
+
+#[test]
+fn a_circuit_that_opens_no_scope_emits_no_flag() {
+    // The flag belongs to the output contract of the circuits that assert, in the way every other
+    // output word does, rather than being a fixed tax on all of them.
+    let output = exec::<_, WP, _>(&NoScope, ExecOptions::new());
+    assert_eq!(
+        output.as_vec::<u8>().len(),
+        4,
+        "a circuit that opens no scope emitted something beyond its own payload"
+    );
+}
+
+#[test]
+fn a_scope_emits_its_flag_even_when_its_body_returns_a_value() {
+    struct Returns;
+    impl Circuit for Returns {
+        fn exec<B: Backend>(&self, fe: &Frontend<B>) {
+            let doubled = Assertions::scope(fe, |asserts| {
+                let value = fe.input(Word4::ONE);
+                asserts.assert(value.clone().eq_const(Word4::ONE));
+                return value.clone() + value;
+            });
+            fe.output(doubled);
+        }
+    }
+    // The flag is emitted when the scope's body returns, so it precedes anything the caller
+    // outputs afterwards from the value the body handed back.
+    let output = exec::<_, WP, _>(&Returns, ExecOptions::new());
+    let words = output.as_vec::<u8>();
+    assert_eq!(words.len(), 5, "expected the flag and four payload words");
+    assert_eq!(words[0], 1, "the flag of a satisfied assertion is not one");
 }
