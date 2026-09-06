@@ -8,6 +8,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- An assertion accumulator is obtained only from `Assertions::scope`, which emits its flag when the body returns.
+  A circuit that asserts can no longer fail to emit what its assertions amount to, which was a silent failure: prover and verifier both built from the same circuit definition, agreed on an output carrying no flag, and the proof verified while constraining nothing.
+  `Assertions::new`, `Assertions::finish` and `Assertions::output` are gone, along with the `Default` implementation.
+  A circuit that asserts nothing opens no scope and emits no flag, so the flag remains part of the output contract of the circuits that have one rather than a fixed cost on every circuit.
+
 - The proof format is identified by `PROOF_FORMAT_ID`, the digest of a canonical reference proof, in place of the hand-maintained `PROOF_FORMAT_VERSION` counter.
   A counter and a digest are two records of one fact that nothing keeps in agreement, and their disagreement is exactly how a format change once went unannounced.
   The tripwire that pins the format can now only be repaired by editing the constant that consumers absorb, so re-pinning the bytes and announcing the change are the same edit.
