@@ -74,7 +74,10 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
         };
     }
 
-    /// Finalizes the verifier, returning the validity of the proof.
+    /// Finalizes the verifier, returning whether the challenges of the ingested iterations match.
+    ///
+    /// A verifier that ingested no iteration returns `true`; the caller must check
+    /// [Verifier::num_iters_ingested] against the number of responses its soundness level demands.
     pub fn finalize(mut self) -> bool {
         let challenge_entropy = Zeroizing::new(self.challenge_hasher.finalize().as_ref().to_vec());
         let mut challenge_generator =
