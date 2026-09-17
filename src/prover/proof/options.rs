@@ -11,7 +11,7 @@ use crate::{
 use core::marker::PhantomData;
 
 /// The optional arguments of a proof build.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProofOptions<
     D: Digest,
     S: Seed,
@@ -22,6 +22,22 @@ pub struct ProofOptions<
     hook_init_arg: BH::InitArg,
     capacity: Shape,
     _marker: PhantomData<fn() -> (D, S)>,
+}
+
+// Hand-rolled: a derive would require the digest, seed, collector and hook types themselves to be
+// [Clone], when the only things held are a shape and two init arguments, which
+// [ResponseDataCollector] and [BackendHook] already require to be [Copy].
+impl<D: Digest, S: Seed, RDC: ResponseDataCollector<D, S>, BH: BackendHook> Clone
+    for ProofOptions<D, S, RDC, BH>
+{
+    fn clone(&self) -> Self {
+        return ProofOptions {
+            collector_init_arg: self.collector_init_arg,
+            hook_init_arg: self.hook_init_arg,
+            capacity: self.capacity.clone(),
+            _marker: PhantomData,
+        };
+    }
 }
 
 impl<D: Digest, S: Seed> ProofOptions<D, S> {
