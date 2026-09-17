@@ -88,9 +88,10 @@
 //! The [prover] module implements proof generation logic:
 //!
 //! - The [prove](crate::prover::prove) function can be used to build a ZKBoo proof in memory.
-//! - The [prove_custom](crate::prover::prove_custom) function allows for complete customisation
-//!   of the proof building process via a user-provided implementation of a
-//!   [ResponseDataCollector](crate::prover::proof::collectors::ResponseDataCollector).
+//! - The [ProofOptions](crate::prover::proof::ProofOptions) passed to
+//!   [prove](crate::prover::prove) select the
+//!   [ResponseDataCollector](crate::prover::proof::collectors::ResponseDataCollector) that receives
+//!   the responses, the [BackendHook](crate::backend::BackendHook) and the state pool reservation.
 //! - The [par_prove](crate::prover::par_prove) function variant of [prove](crate::prover::prove)
 //!   using [rayon] to generate responses in parallel.
 //! - The [ProofBuilder](crate::prover::proof::ProofBuilder) struct drives response generation one
@@ -106,6 +107,8 @@
 //! The [verifier] module implements proof verification logic:
 //!
 //! - The [verify](crate::verifier::verify) function can be used to verify a ZKBoo proof in memory.
+//!   It accepts a proof of any length, including an empty one, so the caller must check that the
+//!   proof has the number of responses its soundness level requires.
 //! - The [par_verify](crate::verifier::par_verify) function variant of
 //!   [verify](crate::verifier::verify) using [rayon] to verify responses in parallel.
 //!
@@ -129,12 +132,13 @@
 //! # Features
 //!
 //! - `u16` enables support for 16-bit words
-//! - `u32` enables support for 32-bit words (enabled by default)
-//! - `u64` enables support for 64-bit words (enabled by default)
+//! - `u32` enables support for 32-bit words
+//! - `u64` enables support for 64-bit words
 //! - `u128` enables support for 128-bit words
+//! - `u256` is reserved, and currently enables nothing
 //! - `parallel` enables parallel proving/verifying using the `rayon` crate
 //!
-//! Support for `u8` words is enabled by default.
+//! No feature is enabled by default. Support for `u8` words is always present.
 //!
 
 #![no_std]

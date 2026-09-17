@@ -17,6 +17,10 @@ use crate::{
 use crate::crypto::{TAG_CHALLENGE, absorb_framed};
 
 /// Verifies a ZKBoo [Proof] against the given circuit and expected output.
+///
+/// The proof is checked response by response, and its length is not checked at all: an empty proof
+/// verifies against any output. The caller must require the number of responses its soundness
+/// level demands.
 pub fn verify<
     C: Circuit,
     H: Hasher,
@@ -48,6 +52,8 @@ pub fn verify<
 ///
 /// Returns [ViewReplayError] if the shape of the expected output does not match the shape
 /// of the outputs produced during a replay, or if the AND messages have not all been consumed.
+///
+/// As with [verify], the length of the proof is the caller's to check.
 #[cfg(feature = "rayon")]
 pub fn par_verify<C: Circuit, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>(
     circuit: &C,

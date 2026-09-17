@@ -82,18 +82,20 @@ pub trait PseudoRandomGenerator: RandomGenerator {
 /// Hash-based implementation of a pseudo-random generator (PRG).
 ///
 /// At PRG creation time, the `seed` bytes passed to [PseudoRandomGenerator::new] are hashed
-/// to produce a fixed-size `key = h(seed)`, using the chosen hash function `h` (implemented by the
-/// specified [Hasher] type `H`).
+/// to produce a fixed-size `key = h(TAG_PRG || len(seed) || seed)`, using the chosen hash function
+/// `h` (implemented by the specified [Hasher] type `H`), where `TAG_PRG` is the domain tag
+/// [TAG_PRG] and `len(seed)` is the seed length as a little-endian 64-bit unsigned integer.
 ///
-/// An internal buffer of random bytes if filled by `h(key||counter)`, where `counter` is a 64-bit
-/// unsigned integer starting at 0 and incremented each time the buffer is refilled;
+/// An internal buffer of random bytes is filled by `h(TAG_PRG || key || counter)`, where `counter`
+/// is a 64-bit unsigned integer starting at 0 and incremented each time the buffer is refilled;
 /// the little-endian byte representation of `counter` is used when concatenating to `key`.
 ///
 /// The implementation of [RandomGenerator::fill_bytes] produces random bytes by consuming the
 /// internal buffer, refilling it once empty and incrementing `counter` by 1.
 ///
-/// As an example, the first filling of the buffer is `h(key||00 00 00 00 00 00 00 00)`,
-/// the second filling of the buffer is `h(key||01 00 00 00 00 00 00 00)`, and so on.
+/// As an example, the first filling of the buffer is
+/// `h(TAG_PRG || key || 00 00 00 00 00 00 00 00)`, the second filling of the buffer is
+/// `h(TAG_PRG || key || 01 00 00 00 00 00 00 00)`, and so on.
 #[derive(Debug)]
 pub struct HashPRG<H: Hasher> {
     hasher: H,

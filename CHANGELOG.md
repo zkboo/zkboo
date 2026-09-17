@@ -4,6 +4,19 @@ All notable changes to this crate are documented in this file, starting at 1.2.0
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `ChallengeOptions` and `VerifyOptions` are `Copy` and `Clone`, and `ProofOptions` is `Clone`, whatever the digest, seed, collector and hook types.
+  They had the derived implementations that 1.2.1 replaced for `ExecOptions`, which asked every type parameter to be cloneable when only initialisation arguments and a shape are held.
+
+### Documentation
+
+- `verify`, `par_verify` and `Verifier::finalize` state that the number of responses is not checked, and that an empty proof verifies against any output.
+- The crate documentation no longer names the removed `prove_custom`, no longer claims that `u32` and `u64` are enabled by default, and marks the `u256` feature as reserved.
+- `HashPRG` documents the domain tag and length prefix it absorbs.
+
 ## [1.2.1] — 2026-09-09
 
 ### Changed

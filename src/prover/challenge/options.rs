@@ -10,7 +10,7 @@ use crate::{
 use core::marker::PhantomData;
 
 /// The optional arguments of a challenge entropy build.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ChallengeOptions<
     D: Digest,
     S: Seed,
@@ -20,6 +20,22 @@ pub struct ChallengeOptions<
     collector_init_arg: VDC::InitArg,
     hook_init_arg: BH::InitArg,
     _marker: PhantomData<fn() -> (D, S)>,
+}
+
+// Hand-rolled: a derive would require the digest, seed, collector and hook types themselves to be
+// [Clone]/[Copy], when the only things held are two init arguments, which [ViewsDataCollector] and
+// [BackendHook] already require to be [Copy].
+impl<D: Digest, S: Seed, VDC: ViewsDataCollector<D, S>, BH: BackendHook> Clone
+    for ChallengeOptions<D, S, VDC, BH>
+{
+    fn clone(&self) -> Self {
+        return *self;
+    }
+}
+
+impl<D: Digest, S: Seed, VDC: ViewsDataCollector<D, S>, BH: BackendHook> Copy
+    for ChallengeOptions<D, S, VDC, BH>
+{
 }
 
 impl<D: Digest, S: Seed> ChallengeOptions<D, S> {

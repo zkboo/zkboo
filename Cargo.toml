@@ -35,7 +35,7 @@ u16 = [] # enables support for 16-bit words
 u32 = [] # enables support for 32-bit words
 u64 = [] # enables support for 64-bit words
 u128 = [] # enables support for 128-bit words
-u256 = [] # enables support for 256-bit words
+u256 = [] # reserved, currently enables nothing
 parallel = [
     "rayon",
 ] # enables parallel proving/verifying using the `rayon` crate
