@@ -4,12 +4,15 @@
 
 use crate::{
     backend::{Backend, BackendHook, Frontend, Hooked, NoHook},
-    crypto::{TAG_CHALLENGE, absorb_framed, GeneratesRandom, HashPRG, Hasher, PseudoRandomGenerator, Seed},
+    crypto::{
+        GeneratesRandom, HashPRG, Hasher, PseudoRandomGenerator, Seed, TAG_CHALLENGE, absorb_framed,
+    },
     prover::{
         challenge::{ChallengeGenerator, PartyVec},
         proof::Response,
         views::ViewCommitment,
     },
+    repetitions::Repetitions,
     verifier::replay::{ViewReplayError, ViewReplayerBackend, WordPairPool},
     word::Words,
 };
@@ -22,14 +25,16 @@ pub struct Verifier<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: Word
     challenge_hasher: H,
     challenges: PartyVec,
     num_iters_ingested: usize,
+    repetitions: Repetitions,
     _marker: core::marker::PhantomData<(PV, S, WPP)>,
 }
 
 impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
     Verifier<'a, H, PV, S, WPP>
 {
-    /// Creates a new [Verifier] for the given expected output and binding message.
-    pub fn new(expected_output: &'a Words, binding: &[u8]) -> Self {
+    /// Creates a new [Verifier] for the given expected output, binding message and required
+    /// number of repetitions.
+    pub fn new(expected_output: &'a Words, binding: &[u8], repetitions: Repetitions) -> Self {
         let mut challenge_hasher = H::new();
         absorb_framed(&mut challenge_hasher, TAG_CHALLENGE, binding);
         return Self {
@@ -37,6 +42,7 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
             challenge_hasher,
             challenges: PartyVec::new(),
             num_iters_ingested: 0,
+            repetitions,
             _marker: core::marker::PhantomData,
         };
     }
@@ -74,11 +80,14 @@ impl<'a, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>
         };
     }
 
-    /// Finalizes the verifier, returning whether the challenges of the ingested iterations match.
+    /// Finalizes the verifier, returning the validity of the proof.
     ///
-    /// A verifier that ingested no iteration returns `true`; the caller must check
-    /// [Verifier::num_iters_ingested] against the number of responses its soundness level demands.
+    /// Returns `false` unless the number of iterations ingested is the number of repetitions the
+    /// verifier was created for.
     pub fn finalize(mut self) -> bool {
+        if self.num_iters_ingested != self.repetitions.count() {
+            return false;
+        }
         let challenge_entropy = Zeroizing::new(self.challenge_hasher.finalize().as_ref().to_vec());
         let mut challenge_generator =
             ChallengeGenerator::new(HashPRG::<H>::new(&challenge_entropy));

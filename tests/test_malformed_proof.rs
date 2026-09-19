@@ -10,6 +10,10 @@
 mod hasher;
 use hasher::Blake3Hasher;
 
+use zkboo::Repetitions;
+use zkboo::executor::ExecOptions;
+use zkboo::prover::proof::ProofOptions;
+use zkboo::verifier::VerifyOptions;
 use zkboo::{
     backend::{Backend, Frontend},
     circuit::Circuit,
@@ -18,9 +22,6 @@ use zkboo::{
     prover::{challenge::Party, proof::Proof, prove, views::OwnedFlexibleWordTriplePool},
     verifier::{replay::OwnedFlexibleWordPairPool, verify},
 };
-use zkboo::executor::ExecOptions;
-use zkboo::prover::proof::ProofOptions;
-use zkboo::verifier::VerifyOptions;
 
 type H = Blake3Hasher;
 type PS = HashPRG<H>;
@@ -66,10 +67,21 @@ fn valid_proof_survives_postcard_roundtrip() {
     // Guards the custom `Party` serde against a wire-format regression.
     let circuit = XorNot { a: 0x5A, b: 0x3C };
     let expected = exec::<_, WP, _>(&circuit, ExecOptions::new());
-    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, 16, b"seed", BINDING, ProofOptions::new());
+    let proof =
+        prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, 16, b"seed", BINDING, ProofOptions::new());
     let bytes = postcard::to_allocvec(&proof).expect("serialize proof");
     let decoded: Proof<S, S> = postcard::from_bytes(&bytes).expect("deserialize proof");
-    assert!(verify::<_, H, PV, S, WPP, _>(&circuit, &expected, &decoded, BINDING, VerifyOptions::new()).expect("verify ok"));
+    assert!(
+        verify::<_, H, PV, S, WPP, _>(
+            &circuit,
+            &expected,
+            &decoded,
+            BINDING,
+            Repetitions::exactly(16),
+            VerifyOptions::new()
+        )
+        .expect("verify ok")
+    );
 }
 
 #[test]
@@ -80,7 +92,8 @@ fn corrupted_challenge_byte_never_aborts_the_verifier() {
     // A crash would abort this test process instead of failing gracefully.
     let circuit = XorNot { a: 0x11, b: 0x22 };
     let expected = exec::<_, WP, _>(&circuit, ExecOptions::new());
-    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, 16, b"seed", BINDING, ProofOptions::new());
+    let proof =
+        prove::<_, H, PS, PV, S, _, WTP, _>(&circuit, 16, b"seed", BINDING, ProofOptions::new());
     let bytes = postcard::to_allocvec(&proof).expect("serialize proof");
     let orig = bytes[1];
     for corrupt in 0u8..=255 {
@@ -89,7 +102,14 @@ fn corrupted_challenge_byte_never_aborts_the_verifier() {
         match postcard::from_bytes::<Proof<S, S>>(&corrupted) {
             Err(_) => {} // malformed bytes rejected at parse — fine.
             Ok(decoded) => {
-                let result = verify::<_, H, PV, S, WPP, _>(&circuit, &expected, &decoded, BINDING, VerifyOptions::new());
+                let result = verify::<_, H, PV, S, WPP, _>(
+                    &circuit,
+                    &expected,
+                    &decoded,
+                    BINDING,
+                    Repetitions::exactly(16),
+                    VerifyOptions::new(),
+                );
                 if corrupt == orig {
                     assert_eq!(
                         result.expect("verify ok"),

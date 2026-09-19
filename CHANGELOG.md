@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- `verify`, `par_verify` and `Verifier::new` take the `Repetitions` the proof is required to carry, and reject a proof of any other length.
+  Verification checked each response it was given and nothing about how many there were, so a proof truncated to a single response — or to none, which verified against any output — passed.
+  The count is what ties a proof to a soundness level, and it is now impossible to ask for verification without naming one.
+
+### Added
+
+- `Repetitions`, with `for_pq_security_bits` (438 at 128 bits) and `exactly`.
+  The formula lived in `zkboo-harness`, which is never published, so no consumer could reach the one function that answers how many repetitions a soundness level needs.
+
 ### Fixed
 
 - `ChallengeOptions` and `VerifyOptions` are `Copy` and `Clone`, and `ProofOptions` is `Clone`, whatever the digest, seed, collector and hook types.
