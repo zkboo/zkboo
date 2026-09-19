@@ -107,8 +107,8 @@
 //! The [verifier] module implements proof verification logic:
 //!
 //! - The [verify](crate::verifier::verify) function can be used to verify a ZKBoo proof in memory.
-//!   It accepts a proof of any length, including an empty one, so the caller must check that the
-//!   proof has the number of responses its soundness level requires.
+//!   It takes the [Repetitions] the proof is required to carry, and rejects a proof of any other
+//!   length, since a proof of too few responses constrains too little.
 //! - The [par_verify](crate::verifier::par_verify) function variant of
 //!   [verify](crate::verifier::verify) using [rayon] to verify responses in parallel.
 //!
@@ -149,8 +149,10 @@ pub mod crypto;
 pub mod executor;
 pub mod memory;
 pub mod prover;
+pub mod repetitions;
 pub mod utils;
 pub mod verifier;
 pub mod word;
 
 pub use crate::prover::proof::PROOF_FORMAT_ID;
+pub use crate::repetitions::Repetitions;

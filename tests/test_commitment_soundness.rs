@@ -10,6 +10,10 @@
 mod hasher;
 use hasher::Blake3Hasher;
 
+use zkboo::Repetitions;
+use zkboo::executor::ExecOptions;
+use zkboo::prover::proof::ProofOptions;
+use zkboo::verifier::VerifyOptions;
 use zkboo::{
     backend::{Backend, Frontend},
     circuit::Circuit,
@@ -19,9 +23,6 @@ use zkboo::{
     verifier::{replay::OwnedFlexibleWordPairPool, verify},
     word::Words,
 };
-use zkboo::executor::ExecOptions;
-use zkboo::prover::proof::ProofOptions;
-use zkboo::verifier::VerifyOptions;
 
 type H = Blake3Hasher;
 type PS = HashPRG<H>;
@@ -60,12 +61,26 @@ fn circuit() -> AndCarry {
 fn prove_it(iters: usize) -> (Words, Proof<S, S>) {
     let c = circuit();
     let expected = exec::<_, WP, _>(&c, ExecOptions::new());
-    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(&c, iters, b"seed entropy", BINDING, ProofOptions::new());
+    let proof = prove::<_, H, PS, PV, S, _, WTP, _>(
+        &c,
+        iters,
+        b"seed entropy",
+        BINDING,
+        ProofOptions::new(),
+    );
     return (expected, proof);
 }
 
 fn is_valid(expected: &Words, proof: &Proof<S, S>) -> bool {
-    return verify::<_, H, PV, S, WPP, _>(&circuit(), expected, proof, BINDING, VerifyOptions::new()).expect("verify ok");
+    return verify::<_, H, PV, S, WPP, _>(
+        &circuit(),
+        expected,
+        proof,
+        BINDING,
+        Repetitions::exactly(proof.len()),
+        VerifyOptions::new(),
+    )
+    .expect("verify ok");
 }
 
 /// Flips the least significant bit of the first byte-word of `words` (its first `u8` slot).

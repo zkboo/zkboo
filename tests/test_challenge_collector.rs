@@ -9,6 +9,9 @@
 //! collector and asserts byte-identical challenge entropy and an identical, verifying proof.
 
 use core::cell::Cell;
+use zkboo::Repetitions;
+use zkboo::executor::ExecOptions;
+use zkboo::verifier::VerifyOptions;
 use zkboo::{
     backend::{Backend, Frontend},
     circuit::Circuit,
@@ -25,8 +28,6 @@ use zkboo::{
     verifier::{replay::OwnedFlexibleWordPairPool, verify},
     word::{CompositeWord, Word},
 };
-use zkboo::executor::ExecOptions;
-use zkboo::verifier::VerifyOptions;
 
 #[path = "common/hasher.rs"]
 mod hasher;
@@ -100,7 +101,10 @@ const NUM_ITERS: usize = 8;
 
 #[test]
 fn custom_challenge_collector_is_transcript_neutral() {
-    let circuit = AndCircuit { a: 0b1100, b: 0b1010 };
+    let circuit = AndCircuit {
+        a: 0b1100,
+        b: 0b1010,
+    };
 
     // 1. Default relayer path (today's behaviour).
     let entropy_relayer = build_challenge_entropy::<AndCircuit, H, PS, PV, S, _, WTP, _>(
@@ -133,29 +137,37 @@ fn custom_challenge_collector_is_transcript_neutral() {
     );
 
     // 3. The downstream proof is therefore identical and still verifies.
-    let proof_relayer =
-        build_proof::<AndCircuit, H, PS, PV, S, _, WTP, _>(
-            &circuit,
-            SEED_ENTROPY,
-            entropy_relayer,
-            NUM_ITERS,
-            ProofOptions::new(),
-        );
-    let proof_custom =
-        build_proof::<AndCircuit, H, PS, PV, S, _, WTP, _>(
-            &circuit,
-            SEED_ENTROPY,
-            entropy_custom,
-            NUM_ITERS,
-            ProofOptions::new(),
-        );
+    let proof_relayer = build_proof::<AndCircuit, H, PS, PV, S, _, WTP, _>(
+        &circuit,
+        SEED_ENTROPY,
+        entropy_relayer,
+        NUM_ITERS,
+        ProofOptions::new(),
+    );
+    let proof_custom = build_proof::<AndCircuit, H, PS, PV, S, _, WTP, _>(
+        &circuit,
+        SEED_ENTROPY,
+        entropy_custom,
+        NUM_ITERS,
+        ProofOptions::new(),
+    );
     assert_eq!(
         proof_relayer, proof_custom,
         "custom challenge collector changed the emitted proof"
     );
 
     let expected_output = exec::<AndCircuit, WP, _>(&circuit, ExecOptions::new());
-    let is_valid = verify::<AndCircuit, H, PV, S, WPP, _>(&circuit, &expected_output, &proof_custom, BINDING, VerifyOptions::new())
-        .expect("verification errored");
-    assert!(is_valid, "proof from the custom challenge path did not verify");
+    let is_valid = verify::<AndCircuit, H, PV, S, WPP, _>(
+        &circuit,
+        &expected_output,
+        &proof_custom,
+        BINDING,
+        Repetitions::exactly(NUM_ITERS),
+        VerifyOptions::new(),
+    )
+    .expect("verification errored");
+    assert!(
+        is_valid,
+        "proof from the custom challenge path did not verify"
+    );
 }

@@ -11,6 +11,11 @@ mod hasher;
 use hasher::Blake3Hasher;
 
 use zeroize::Zeroizing;
+use zkboo::Repetitions;
+use zkboo::executor::ExecOptions;
+use zkboo::prover::challenge::ChallengeOptions;
+use zkboo::prover::proof::ProofOptions;
+use zkboo::verifier::VerifyOptions;
 use zkboo::{
     backend::{Backend, Frontend},
     circuit::Circuit,
@@ -25,10 +30,6 @@ use zkboo::{
     verifier::{replay::OwnedFlexibleWordPairPool, verify},
     word::Words,
 };
-use zkboo::executor::ExecOptions;
-use zkboo::prover::proof::ProofOptions;
-use zkboo::verifier::VerifyOptions;
-use zkboo::prover::challenge::ChallengeOptions;
 
 type H = Blake3Hasher;
 type PS = HashPRG<H>;
@@ -83,13 +84,12 @@ fn challenge_entropy() -> Zeroizing<Vec<u8>> {
 /// Builds the responses `[start, end)` of the full proof, skipping the iterations outside the range.
 fn ranged(start: usize, end: usize) -> Proof<S, S> {
     let circuit = circuit();
-    let mut builder =
-        ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
-            SEED_ENTROPY,
-            challenge_entropy(),
-            NUM_ITERS,
-            ProofOptions::new(),
-        );
+    let mut builder = ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
+        SEED_ENTROPY,
+        challenge_entropy(),
+        NUM_ITERS,
+        ProofOptions::new(),
+    );
     builder.skip_iters(start);
     let mut responses = Proof::new();
     for _ in start..end {
@@ -115,7 +115,13 @@ fn expected_output() -> Words {
 /// proof verifies.
 #[test]
 fn ranges_reassemble_the_full_proof() {
-    let full = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit(), NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
+    let full = prove::<_, H, PS, PV, S, _, WTP, _>(
+        &circuit(),
+        NUM_ITERS,
+        SEED_ENTROPY,
+        BINDING,
+        ProofOptions::new(),
+    );
     let full_bytes = response_bytes(&full);
     let singletons: Vec<(usize, usize)> = (0..NUM_ITERS).map(|k| (k, k + 1)).collect();
     let partitions: Vec<Vec<(usize, usize)>> = partitions(singletons);
@@ -130,8 +136,15 @@ fn ranges_reassemble_the_full_proof() {
             "partition {partition:?} does not reassemble the full proof"
         );
         assert!(
-            verify::<_, H, PV, S, WPP, _>(&circuit(), &expected_output(), &assembled, BINDING, VerifyOptions::new())
-                .expect("verification runs"),
+            verify::<_, H, PV, S, WPP, _>(
+                &circuit(),
+                &expected_output(),
+                &assembled,
+                BINDING,
+                Repetitions::exactly(NUM_ITERS),
+                VerifyOptions::new()
+            )
+            .expect("verification runs"),
             "partition {partition:?} reassembles into a proof that does not verify"
         );
     }
@@ -154,7 +167,13 @@ fn partitions(singletons: Vec<(usize, usize)>) -> Vec<Vec<(usize, usize)>> {
 /// layout, not just one.
 #[test]
 fn every_challenge_is_exercised() {
-    let full = prove::<_, H, PS, PV, S, _, WTP, _>(&circuit(), NUM_ITERS, SEED_ENTROPY, BINDING, ProofOptions::new());
+    let full = prove::<_, H, PS, PV, S, _, WTP, _>(
+        &circuit(),
+        NUM_ITERS,
+        SEED_ENTROPY,
+        BINDING,
+        ProofOptions::new(),
+    );
     let mut seen = [false; 3];
     for response in &full {
         seen[response.challenge().index()] = true;
@@ -169,13 +188,12 @@ fn every_challenge_is_exercised() {
 fn skipping_advances_the_streams() {
     let tail = ranged(4, NUM_ITERS);
     let circuit = circuit();
-    let mut builder =
-        ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
-            SEED_ENTROPY,
-            challenge_entropy(),
-            NUM_ITERS,
-            ProofOptions::new(),
-        );
+    let mut builder = ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
+        SEED_ENTROPY,
+        challenge_entropy(),
+        NUM_ITERS,
+        ProofOptions::new(),
+    );
     let mut unskipped = Proof::new();
     for _ in 4..NUM_ITERS {
         let iteration = builder.next_iter().expect("iteration available");
@@ -194,13 +212,12 @@ fn skipping_advances_the_streams() {
 /// Skipped iterations count towards finalization, and no iteration is yielded beyond the total.
 #[test]
 fn skipped_iterations_are_accounted_for() {
-    let mut builder =
-        ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
-            SEED_ENTROPY,
-            challenge_entropy(),
-            NUM_ITERS,
-            ProofOptions::new(),
-        );
+    let mut builder = ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
+        SEED_ENTROPY,
+        challenge_entropy(),
+        NUM_ITERS,
+        ProofOptions::new(),
+    );
     assert_eq!(builder.num_iters_remaining(), NUM_ITERS);
     builder.skip_iters(2);
     assert_eq!(builder.num_iters_skipped(), 2);
@@ -227,12 +244,11 @@ fn skipped_iterations_are_accounted_for() {
 #[test]
 #[should_panic(expected = "Cannot skip")]
 fn skipping_past_the_end_panics() {
-    let mut builder =
-        ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
-            SEED_ENTROPY,
-            challenge_entropy(),
-            NUM_ITERS,
-            ProofOptions::new(),
-        );
+    let mut builder = ProofBuilder::<H, PS, PV, S, RDC, WTP>::new(
+        SEED_ENTROPY,
+        challenge_entropy(),
+        NUM_ITERS,
+        ProofOptions::new(),
+    );
     builder.skip_iters(NUM_ITERS + 1);
 }

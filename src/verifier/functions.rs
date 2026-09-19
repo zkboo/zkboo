@@ -2,25 +2,24 @@
 
 //! Functions for verifying ZKBoo proofs.
 
+#[cfg(feature = "rayon")]
+use crate::crypto::{TAG_CHALLENGE, absorb_framed};
 use crate::{
     backend::BackendHook,
     circuit::Circuit,
     crypto::{Hasher, PseudoRandomGenerator, Seed},
     prover::proof::Proof,
+    repetitions::Repetitions,
     verifier::{
         Verifier, VerifyOptions,
         replay::{ViewReplayError, WordPairPool},
     },
     word::Words,
 };
-#[cfg(feature = "rayon")]
-use crate::crypto::{TAG_CHALLENGE, absorb_framed};
 
 /// Verifies a ZKBoo [Proof] against the given circuit and expected output.
 ///
-/// The proof is checked response by response, and its length is not checked at all: an empty proof
-/// verifies against any output. The caller must require the number of responses its soundness
-/// level demands.
+/// Returns `Ok(false)` unless the proof carries exactly `repetitions` responses.
 pub fn verify<
     C: Circuit,
     H: Hasher,
@@ -33,9 +32,14 @@ pub fn verify<
     expected_output: &Words,
     proof: &Proof<H::Digest, S>,
     binding: &[u8],
+    repetitions: Repetitions,
     options: VerifyOptions<BH>,
 ) -> Result<bool, ViewReplayError> {
-    let mut verifier: Verifier<H, PV, S, WPP> = Verifier::new(expected_output, binding);
+    if proof.len() != repetitions.count() {
+        return Ok(false);
+    }
+    let mut verifier: Verifier<H, PV, S, WPP> =
+        Verifier::new(expected_output, binding, repetitions);
     for response in proof {
         // Reject a structurally malformed (untrusted) response before replaying it.
         if !response.is_well_formed() {
@@ -52,20 +56,22 @@ pub fn verify<
 ///
 /// Returns [ViewReplayError] if the shape of the expected output does not match the shape
 /// of the outputs produced during a replay, or if the AND messages have not all been consumed.
-///
-/// As with [verify], the length of the proof is the caller's to check.
 #[cfg(feature = "rayon")]
 pub fn par_verify<C: Circuit, H: Hasher, PV: PseudoRandomGenerator, S: Seed, WPP: WordPairPool>(
     circuit: &C,
     expected_output: &Words,
     proof: &Proof<H::Digest, S>,
     binding: &[u8],
+    repetitions: Repetitions,
 ) -> Result<bool, ViewReplayError>
 where
     C: Sync,
     H::Digest: Send + Sync,
     S: Send + Sync,
 {
+    if proof.len() != repetitions.count() {
+        return Ok(false);
+    }
     use crate::{
         crypto::{GeneratesRandom, HashPRG},
         prover::challenge::{ChallengeGenerator, PartyVec},
