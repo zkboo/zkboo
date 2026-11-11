@@ -4,6 +4,14 @@ All notable changes to this crate are documented in this file, starting at 1.2.0
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this crate adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-11-11
+
+### Fixed
+
+- A response whose AND-message or input-share vector was shorter than the circuit consumed replayed with zero words past its end, and passed the consumption check whenever the cursor happened to land on its length.
+  The cursor now counts the words demanded, so a short vector fails replay as a long one always did.
+  This was encoding malleability only: the set of replayable views is unchanged, but two distinct byte strings verified as the same proof.
+
 ## [1.3.0] — 2026-09-19
 
 ### Changed
