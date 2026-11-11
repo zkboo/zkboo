@@ -6,7 +6,7 @@ use crate::{
     crypto::{Digest, Seed},
     prover::proof::Response,
     verifier::replay::ViewReplayError,
-    word::{ByWordType, CompositeWord, ShapeError, Word},
+    word::{ByWordType, CompositeWord, Shape, ShapeError, Word},
 };
 use core::array;
 
@@ -51,34 +51,28 @@ impl<'a, D: Digest, S: Seed> ReplaySource<D> for ResponseReplaySource<'a, D, S> 
     fn next_and_msg<W: Word, const N: usize>(&mut self) -> CompositeWord<W, N> {
         let and_msg_vec = self.response.and_msg_next_party().as_vec::<W>();
         let and_msg_idx = self.and_msg_idx.as_value_mut::<W>();
-        if *and_msg_idx + N > and_msg_vec.len() {
+        let start = *and_msg_idx;
+        *and_msg_idx += N;
+        if start + N > and_msg_vec.len() {
             return CompositeWord::<W, N>::ZERO;
         }
-        let and_msg =
-            CompositeWord::<W, N>::from_le_words(array::from_fn(|i| and_msg_vec[*and_msg_idx + i]));
-        *and_msg_idx += N;
-        return and_msg;
+        return CompositeWord::<W, N>::from_le_words(array::from_fn(|i| and_msg_vec[start + i]));
     }
 
     fn next_input_share2<W: Word, const N: usize>(&mut self) -> CompositeWord<W, N> {
-        // A well-formed response for a party-2-opening challenge always carries this share
-        // (enforced up front by `Response::is_well_formed` in the verifier). Should a malformed
-        // response reach here regardless, fall back to zero rather than panicking: the replayed
-        // view then cannot match the committed one, so the proof is rejected — never aborted.
-        let input_share2_words = match self.response.input_share_2() {
-            Some(share) => share,
+        let input_share2_idx = self.input_share2_idx.as_value_mut::<W>();
+        let start = *input_share2_idx;
+        *input_share2_idx += N;
+        let input_share2_vec = match self.response.input_share_2() {
+            Some(share) => share.as_vec::<W>(),
             None => return CompositeWord::<W, N>::ZERO,
         };
-        let input_share2_vec = input_share2_words.as_vec::<W>();
-        let input_share2_idx = self.input_share2_idx.as_value_mut::<W>();
-        if *input_share2_idx + N > input_share2_vec.len() {
+        if start + N > input_share2_vec.len() {
             return CompositeWord::<W, N>::ZERO;
         }
-        let input_share2 = CompositeWord::<W, N>::from_le_words(array::from_fn(|i| {
-            input_share2_vec[*input_share2_idx + i]
+        return CompositeWord::<W, N>::from_le_words(array::from_fn(|i| {
+            input_share2_vec[start + i]
         }));
-        *input_share2_idx += N;
-        return input_share2;
     }
 
     fn commitment_digest_unopened(&mut self) -> D {
@@ -92,13 +86,15 @@ impl<'a, D: Digest, S: Seed> ReplaySource<D> for ResponseReplaySource<'a, D, S> 
                 self.and_msg_idx,
             )));
         }
-        if let Some(input_share_2) = self.response.input_share_2() {
-            if self.input_share2_idx != input_share_2.shape() {
-                return Err(ViewReplayError::InputShare2ShapeMismatch(ShapeError::new(
-                    input_share_2.shape(),
-                    self.input_share2_idx,
-                )));
-            }
+        let input_share2_shape = match self.response.input_share_2() {
+            Some(share) => share.shape(),
+            None => Shape::default(),
+        };
+        if self.input_share2_idx != input_share2_shape {
+            return Err(ViewReplayError::InputShare2ShapeMismatch(ShapeError::new(
+                input_share2_shape,
+                self.input_share2_idx,
+            )));
         }
         return Ok(());
     }
